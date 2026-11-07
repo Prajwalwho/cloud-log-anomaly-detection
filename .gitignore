@@ -1,0 +1,28 @@
+@'
+# Python
+.venv/
+venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node.js
+**/node_modules/
+**/dist/
+**/build/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and editor files
+*.log
+.DS_Store
+.vscode/
+
+# Generated datasets and models
+data/raw/*
+data/processed/*
+models/trained/*
+'@ | Set-Content .gitignore
