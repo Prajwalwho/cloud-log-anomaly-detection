@@ -1,0 +1,5 @@
+confluent-kafka
+pydantic
+pydantic-settings
+elasticsearch>=8,<9
+python-dotenv

@@ -1,0 +1,9 @@
+-r backend/api/requirements.txt
+-r backend/ingestion/requirements.txt
+-r backend/log_generator/requirements.txt
+-r backend/detection/requirements.txt
+pytest
+jupyter
+matplotlib
+seaborn
+ruff

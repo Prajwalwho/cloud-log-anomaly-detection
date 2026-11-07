@@ -1,0 +1,3 @@
+confluent-kafka
+pydantic-settings
+python-dotenv

@@ -1,7 +1,7 @@
-@'
 # Python
 .venv/
 venv/
+backend/.venv/
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
@@ -20,9 +20,15 @@ venv/
 *.log
 .DS_Store
 .vscode/
+.idea/
 
 # Generated datasets and models
 data/raw/*
 data/processed/*
 models/trained/*
-'@ | Set-Content .gitignore
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!models/trained/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/
