@@ -1,0 +1,216 @@
+# Data Contracts
+## Cloud Log Anomaly Detection for Proactive Fault Management
+
+Version: 1.0
+Status: Draft — will change as implementation progresses.
+
+This document defines the formats of all data exchanged between system components. Every service must follow these contracts.
+
+---
+
+## 1. General Conventions
+
+| Rule | Value |
+|---|---|
+| Encoding | JSON, UTF-8 |
+| Field naming | snake_case |
+| Timestamps | ISO 8601, UTC, millisecond precision (`2026-11-08T10:15:30.123Z`) |
+| IDs | UUID v4 strings |
+| Anomaly scores | Normalized to 0.0–1.0; higher means more anomalous |
+| Schema version | Every message carries `schema_version` |
+
+All components store and process time in UTC. Conversion to local time happens only in the dashboard.
+
+---
+
+## 2. Log Event Schema
+
+The canonical format of every log event in the system.
+
+### 2.1 Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `schema_version` | string | Yes | Contract version, currently `"1.0"` |
+| `event_id` | string (UUID) | Yes | Unique ID; used for deduplication and for linking anomalies to logs |
+| `timestamp` | string (ISO 8601) | Yes | Time the event occurred at the source |
+| `service` | string | Yes | Name of the service that produced the log |
+| `host` | string | Yes | Node or container that produced the log |
+| `level` | enum | Yes | One of `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL` |
+| `message` | string | Yes | Raw log message, max 10,000 characters |
+| `trace_id` | string | No | Request trace ID, links logs across services |
+| `endpoint` | string | No | Request endpoint, e.g. `POST /api/payments` |
+| `status_code` | integer | No | HTTP status code, 100–599 |
+| `latency_ms` | number | No | Request latency in milliseconds, ≥ 0 |
+| `metadata` | object | No | Any extra key-value data |
+
+### 2.2 Example — normal request
+
+```json
+{
+  "schema_version": "1.0",
+  "event_id": "3f2b8c1e-9a4d-4e2b-8f61-2c7d9e0a1b34",
+  "timestamp": "2026-11-08T10:15:30.123Z",
+  "service": "payment-service",
+  "host": "node-2",
+  "level": "INFO",
+  "message": "Payment processed for order 48213 in 142 ms",
+  "trace_id": "a91c4e7f",
+  "endpoint": "POST /api/payments",
+  "status_code": 200,
+  "latency_ms": 142.0,
+  "metadata": {}
+}
+```
+
+### 2.3 Example — error
+
+```json
+{
+  "schema_version": "1.0",
+  "event_id": "7d1e5a90-3c2f-4b8e-a6d4-91f0b2c3e5a7",
+  "timestamp": "2026-11-08T10:15:31.877Z",
+  "service": "payment-service",
+  "host": "node-2",
+  "level": "ERROR",
+  "message": "Database connection timeout after 3000 ms",
+  "trace_id": "b72d5f80",
+  "endpoint": "POST /api/payments",
+  "status_code": 500,
+  "latency_ms": 3012.0,
+  "metadata": {"db_host": "postgres-primary"}
+}
+```
+
+### 2.4 Validation rules (ingestion service)
+
+A message is rejected and sent to `logs.deadletter` if:
+
+1. It is not valid JSON.
+2. Any required field is missing or has the wrong type.
+3. `level` is not one of the allowed values.
+4. `timestamp` cannot be parsed, or is more than 5 minutes in the future.
+5. `status_code` is outside 100–599, or `latency_ms` is negative.
+6. It contains top-level fields not defined in this contract (extra data belongs in `metadata`).
+
+### 2.5 Ground truth is never part of the log
+
+Log events do **not** carry anomaly labels. When the log generator injects a fault, it writes the ground truth to a separate file (Section 5). This prevents label leakage: the detector can never see the answer it is being evaluated on.
+
+---
+
+## 3. Simulated Environment
+
+| Service | Role |
+|---|---|
+| `api-gateway` | Entry point; routes all requests |
+| `auth-service` | Login and token validation |
+| `order-service` | Order creation and lookup |
+| `payment-service` | Payment processing; depends on the database |
+| `inventory-service` | Stock checks and reservation |
+
+Hosts: `node-1`, `node-2`, `node-3`.
+
+The list may be extended. Detection must not assume a fixed set of services.
+
+---
+
+## 4. Kafka Topics
+
+The setup has a single broker, so replication factor is 1 for all topics. This is a known limitation of the development setup; production would use a replication factor of 3.
+
+| Topic | Partitions | Retention | Message key | Producer | Consumers |
+|---|---|---|---|---|---|
+| `logs.raw` | 3 | 24 hours | `service` | Log generator / applications | Ingestion (`ingestion-group`), Detection (`detection-group`) |
+| `logs.deadletter` | 1 | 7 days | none | Ingestion | Manual inspection |
+| `anomalies.detected` | 1 | 7 days | `service` | Detection | API (`api-group`), Alerting (`alerting-group`) |
+
+### 4.1 Why `service` is the message key
+
+Kafka keeps message order only within a partition. Keying by `service` sends all logs of one service to the same partition, so the detection service receives each service's logs in order. This is needed to build correct time windows.
+
+### 4.2 Consumer groups
+
+Ingestion and detection use different consumer groups on `logs.raw`, so each receives every message. Slow detection does not delay storage, and either service can be restarted or scaled independently.
+
+---
+
+## 5. Message Formats
+
+### 5.1 `logs.raw`
+
+Exactly the log event schema in Section 2.
+
+### 5.2 `logs.deadletter`
+
+```json
+{
+  "schema_version": "1.0",
+  "failed_at": "2026-11-08T10:15:32.004Z",
+  "source_topic": "logs.raw",
+  "source_partition": 1,
+  "source_offset": 58213,
+  "error": "Field 'level': value 'CRITICAL' is not a valid level",
+  "raw_message": "{\"service\": \"auth-service\", \"level\": \"CRITICAL\", ...}"
+}
+```
+
+`raw_message` holds the original message exactly as received, as a string, so nothing is lost.
+
+### 5.3 `anomalies.detected`
+
+```json
+{
+  "schema_version": "1.0",
+  "anomaly_id": "c4e8a2f1-6b3d-4a9e-8c7f-0d1e2b3a4c5d",
+  "detected_at": "2026-11-08T10:16:02.511Z",
+  "service": "payment-service",
+  "window_start": "2026-11-08T10:15:00.000Z",
+  "window_end": "2026-11-08T10:16:00.000Z",
+  "anomaly_score": 0.91,
+  "severity": "HIGH",
+  "model_name": "isolation_forest",
+  "model_version": "1.0.0",
+  "summary": {
+    "log_count": 1840,
+    "error_rate": 0.37,
+    "avg_latency_ms": 2140.5,
+    "new_templates": 2
+  },
+  "sample_event_ids": [
+    "7d1e5a90-3c2f-4b8e-a6d4-91f0b2c3e5a7"
+  ]
+}
+```
+
+| Field | Description |
+|---|---|
+| `window_start`, `window_end` | The 60-second window that was scored |
+| `anomaly_score` | Normalized 0.0–1.0 model output |
+| `severity` | One of `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (rules defined in Phase 6) |
+| `summary` | Key window statistics, so the dashboard can explain the anomaly |
+| `sample_event_ids` | Up to 10 representative log IDs; full logs are fetched from Elasticsearch |
+
+### 5.4 Ground-truth record (file, not Kafka)
+
+Written by the log generator to `data/ground_truth/<run_id>.jsonl`, one JSON object per line:
+
+```json
+{
+  "run_id": "run-20261108-101500",
+  "scenario": "error_burst",
+  "service": "payment-service",
+  "start": "2026-11-08T10:15:00.000Z",
+  "end": "2026-11-08T10:17:00.000Z",
+  "description": "Database timeouts causing 40% error rate"
+}
+```
+
+During evaluation, a detection window counts as a true positive if it overlaps a ground-truth fault interval for the same service.
+
+---
+
+## 6. Change Policy
+
+- Adding an optional field: allowed; update this document.
+- Removing or renaming a field, or changing a type: increment `schema_version` and update every component.
