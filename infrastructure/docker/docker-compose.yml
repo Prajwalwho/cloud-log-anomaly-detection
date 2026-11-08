@@ -58,7 +58,7 @@ services:
     image: postgres:16
     container_name: cla-postgres
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-15432}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-cla_db}
       POSTGRES_USER: ${POSTGRES_USER:-cla_user}
@@ -72,5 +72,33 @@ services:
       timeout: 5s
       retries: 10
 
+  # ---------------- Elasticsearch (single node, development mode) ----------------
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    container_name: cla-elasticsearch
+    ports:
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
+    environment:
+      cluster.name: cla-cluster
+      node.name: cla-es-node-1
+      # One node, no cluster discovery
+      discovery.type: single-node
+      # Security (TLS + passwords) disabled for local development only
+      xpack.security.enabled: "false"
+      # Fixed 1 GB Java heap; min = max avoids heap resizing pauses
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+      # Don't block writes when the laptop disk is more than 90% full (dev only)
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+    mem_limit: 2g
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs \"http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s\" > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+
 volumes:
   postgres-data:
+  es-data:

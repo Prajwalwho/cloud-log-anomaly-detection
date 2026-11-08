@@ -1,6 +1,6 @@
 """
-Smoke test: verifies that Kafka and PostgreSQL are reachable from the host
-and match the project contracts.
+Smoke test: verifies that Kafka, PostgreSQL and Elasticsearch are reachable
+from the host and match the project contracts.
 
 Usage:  python scripts/smoke_test.py
 """
@@ -13,13 +13,15 @@ import psycopg
 from confluent_kafka import Consumer, Producer
 from confluent_kafka.admin import AdminClient, NewTopic
 from dotenv import load_dotenv
+from elasticsearch import Elasticsearch
 
 load_dotenv()
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
 PG_CONNINFO = (
     f"host={os.getenv('POSTGRES_HOST', 'localhost')} "
-    f"port={os.getenv('POSTGRES_PORT', '5432')} "
+    f"port={os.getenv('POSTGRES_PORT', '15432')} "
     f"dbname={os.getenv('POSTGRES_DB', 'cla_db')} "
     f"user={os.getenv('POSTGRES_USER', 'cla_user')} "
     f"password={os.getenv('POSTGRES_PASSWORD', 'change_me')}"
@@ -90,9 +92,37 @@ def check_postgres() -> None:
     print(f"[OK] PostgreSQL: all {len(EXPECTED_TABLES)} tables present, {service_count} services seeded")
 
 
+def check_elasticsearch() -> None:
+    es = Elasticsearch(ELASTICSEARCH_URL, request_timeout=15)
+
+    # 1. Cluster is up and at least yellow (yellow is normal for a single node)
+    version = es.info()["version"]["number"]
+    health = es.cluster.health(wait_for_status="yellow", timeout="10s")
+    if health["status"] not in ("yellow", "green"):
+        raise RuntimeError(f"Cluster status is {health['status']}")
+
+    # 2. Write, read back and delete a document in a temporary index
+    test_index = f"smoke-test-{uuid.uuid4().hex[:8]}"
+    doc_id = str(uuid.uuid4())
+    try:
+        es.index(index=test_index, id=doc_id, document={"message": "smoke test"}, refresh="wait_for")
+        doc = es.get(index=test_index, id=doc_id)
+        if doc["_source"].get("message") != "smoke test":
+            raise RuntimeError("Document read back does not match what was written")
+    finally:
+        es.indices.delete(index=test_index, ignore_unavailable=True)
+
+    print(f"[OK] Elasticsearch {version} at {ELASTICSEARCH_URL}: cluster {health['status']}, write/read works")
+
+
 def main() -> int:
     failures = 0
-    for name, check in [("Kafka", check_kafka), ("PostgreSQL", check_postgres)]:
+    checks = [
+        ("Kafka", check_kafka),
+        ("PostgreSQL", check_postgres),
+        ("Elasticsearch", check_elasticsearch),
+    ]
+    for name, check in checks:
         try:
             check()
         except Exception as exc:  # report every failure, not just the first
