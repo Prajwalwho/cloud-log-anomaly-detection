@@ -1,10 +1,10 @@
 # Python
 .venv/
 venv/
-backend/.venv/
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 
 # Node.js
 **/node_modules/
@@ -20,15 +20,17 @@ backend/.venv/
 *.log
 .DS_Store
 .vscode/
-.idea/
 
-# Generated datasets and models
+# Generated datasets, ground truth and models (keep folder placeholders)
 data/raw/*
 data/processed/*
+data/ground_truth/*
 models/trained/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/ground_truth/.gitkeep
 !models/trained/.gitkeep
 
-# Jupyter
+# Jupyter and editors
 .ipynb_checkpoints/
+.idea/

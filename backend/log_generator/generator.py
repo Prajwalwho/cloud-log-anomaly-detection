@@ -8,10 +8,15 @@ docs/design/contracts.md (Section 2). Traffic is modelled as user requests
   - latencies add up along the call chain,
   - a failure in one service also appears as an error at the gateway.
 
+Faults from scenarios.py can be injected at known times; the exact fault
+intervals are written to a ground-truth file (contracts.md, Section 5.4)
+and are never part of the log events themselves.
+
 Usage (run from the project root):
     python -m backend.log_generator.generator --duration 10 --pretty
-    python -m backend.log_generator.generator --duration 60 --seed 42
-    python -m backend.log_generator.generator --duration 600 --fast --seed 42 --output data/processed/normal_10m.jsonl
+    python -m backend.log_generator.generator --list-scenarios
+    python -m backend.log_generator.generator --scenario error_burst --fast --seed 42 --output data/processed/error_burst.jsonl
+    python -m backend.log_generator.generator --scenario all --fast --seed 42 --output data/processed/all_faults.jsonl
 """
 from __future__ import annotations
 
@@ -27,9 +32,10 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterator, TextIO
+from typing import Iterator, Sequence, TextIO
 
 from .config import settings
+from .scenarios import SCENARIOS, Fault, Scenario, build_schedule, schedule_faults
 
 SCHEMA_VERSION = "1.0"
 LEVELS = ("DEBUG", "INFO", "WARN", "ERROR", "FATAL")
@@ -85,6 +91,16 @@ class BackgroundTask:
     level: str
     template: str
     interval_s: float
+
+
+@dataclass
+class Effects:
+    """Combined effect of all faults active on one service at one moment."""
+    error_rate: float = 0.0
+    latency_factor: float = 1.0
+    new_error: str | None = None
+    new_error_rate: float = 0.0
+    silent: bool = False
 
 
 AUTH_VALIDATE = Step(
@@ -207,6 +223,7 @@ class LogGenerator:
 
     Request arrivals follow a Poisson process whose rate varies smoothly over
     time (a sine wave), so "normal" traffic has natural peaks and dips.
+    Optional faults change service behaviour during their time intervals.
     """
 
     def __init__(
@@ -216,17 +233,22 @@ class LogGenerator:
         start: datetime | None = None,
         diurnal_period_s: float = 600.0,
         diurnal_amplitude: float = 0.3,
+        faults: Sequence[Fault] = (),
     ) -> None:
         if rate <= 0:
             raise ValueError("rate must be positive")
         if not 0 <= diurnal_amplitude < 1:
             raise ValueError("diurnal_amplitude must be in [0, 1)")
+        for fault in faults:
+            if fault.service not in HOSTS or fault.service == "api-gateway":
+                raise ValueError(f"Faults can only target downstream services, not '{fault.service}'")
 
         self.rate = rate
         self.rng = random.Random(seed)
         self.start = start or datetime.now(timezone.utc)
         self.diurnal_period_s = diurnal_period_s
         self.diurnal_amplitude = diurnal_amplitude
+        self.faults = tuple(faults)
 
         self._heap: list[tuple[float, int, dict]] = []   # (offset_seconds, sequence, event)
         self._seq = 0
@@ -254,6 +276,24 @@ class LogGenerator:
             offset, _, event = heapq.heappop(self._heap)
             yield offset, event
 
+    # ---------------- faults ----------------
+    def _effects(self, service: str, t: float) -> Effects:
+        """Combine all faults active on `service` at offset `t`."""
+        effects = Effects()
+        for fault in self.faults:
+            if fault.service != service or not fault.is_active(t):
+                continue
+            if fault.kind == "error_burst":
+                effects.error_rate = max(effects.error_rate, fault.error_rate)
+            elif fault.kind == "latency_spike":
+                effects.latency_factor *= fault.latency_factor
+            elif fault.kind == "new_error":
+                effects.new_error = fault.message
+                effects.new_error_rate = fault.error_rate
+            elif fault.kind == "silent":
+                effects.silent = True
+        return effects
+
     # ---------------- traffic ----------------
     def _rate_multiplier(self, t: float) -> float:
         return 1.0 + self.diurnal_amplitude * math.sin(2 * math.pi * t / self.diurnal_period_s)
@@ -266,14 +306,36 @@ class LogGenerator:
 
         elapsed_ms = self.rng.uniform(1.0, 3.0)   # gateway routing overhead
         failed: Step | None = None
+        unavailable = False
 
         for step in flow.steps:
-            latency = self._latency(step.median_ms)
+            effects = self._effects(step.service, t0 + elapsed_ms / 1000)
+
+            # Service is down: it writes nothing, the gateway gets "connection refused" quickly
+            if effects.silent:
+                elapsed_ms += self.rng.uniform(1.0, 5.0)
+                failed, unavailable = step, True
+                break
+
+            latency = self._latency(step.median_ms) * effects.latency_factor
             ctx["latency"] = round(latency)
             done_at = t0 + (elapsed_ms + latency) / 1000
             host = self.rng.choice(HOSTS[step.service])
 
-            if self.rng.random() < BASE_ERROR_RATE:
+            # New, never-seen error (only while a new_error fault is active)
+            if effects.new_error and self.rng.random() < effects.new_error_rate:
+                ctx["worker_id"] = self.rng.randint(1, 16)
+                self._push(done_at, self._event(
+                    done_at, step.service, "ERROR", effects.new_error.format(**ctx),
+                    host=host, trace_id=trace_id, endpoint=step.endpoint,
+                    status_code=500, latency_ms=latency,
+                ))
+                elapsed_ms += latency
+                failed = step
+                break
+
+            # Normal failure (baseline rate, raised during an error_burst)
+            if self.rng.random() < max(BASE_ERROR_RATE, effects.error_rate):
                 self._push(done_at, self._event(
                     done_at, step.service, "ERROR", step.error.format(**ctx),
                     host=host, trace_id=trace_id, endpoint=step.endpoint,
@@ -309,7 +371,11 @@ class LogGenerator:
         # The gateway logs last, with the total request latency
         gateway_ms = elapsed_ms + self.rng.uniform(1.0, 3.0)
         done_at = t0 + gateway_ms / 1000
-        if failed:
+        if unavailable:
+            level, status = "ERROR", 503
+            message = (f"{flow.endpoint} failed with status 503 in {round(gateway_ms)} ms: "
+                       f"{failed.service} unavailable (connection refused)")
+        elif failed:
             level, status = "ERROR", 502
             message = (f"{flow.endpoint} failed with status 502 in {round(gateway_ms)} ms: "
                        f"{failed.service} returned an error")
@@ -328,7 +394,9 @@ class LogGenerator:
         for i, task in enumerate(BACKGROUND_TASKS):
             while self._background_next[i] <= until:
                 due = self._background_next[i]
-                self._push(due, self._event(due, task.service, task.level, task.template.format(**self._context())))
+                if not self._effects(task.service, due).silent:   # a crashed service logs nothing
+                    self._push(due, self._event(due, task.service, task.level,
+                                                task.template.format(**self._context())))
                 self._background_next[i] = due + task.interval_s * self.rng.uniform(0.9, 1.1)
 
     # ---------------- helpers ----------------
@@ -388,6 +456,34 @@ class LogGenerator:
 
 
 # ---------------------------------------------------------------------------
+# Ground truth
+# ---------------------------------------------------------------------------
+def ground_truth_records(
+    schedule: list[tuple[Scenario, float]], start: datetime, run_id: str
+) -> list[dict]:
+    """One record per fault, in the format of contracts.md Section 5.4."""
+    records = []
+    for scenario, offset in schedule:
+        for fault in scenario.faults:
+            records.append({
+                "run_id": run_id,
+                "scenario": scenario.name,
+                "service": fault.service,
+                "start": format_timestamp(start + timedelta(seconds=offset + fault.start_s)),
+                "end": format_timestamp(start + timedelta(seconds=offset + fault.end_s)),
+                "description": fault.description,
+            })
+    return records
+
+
+def write_ground_truth(records: list[dict], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as f:
+        for record in records:
+            f.write(json.dumps(record) + "\n")
+
+
+# ---------------------------------------------------------------------------
 # Command line
 # ---------------------------------------------------------------------------
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -395,7 +491,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--rate", type=float, default=settings.generator_rate,
                         help="average user requests per second (default: %(default)s)")
     parser.add_argument("--duration", type=float, default=10.0,
-                        help="seconds of logs to generate; 0 = run until Ctrl+C (default: %(default)s)")
+                        help="seconds of logs to generate; 0 = run until Ctrl+C (default: %(default)s). "
+                             "Extended automatically to fit the scenarios.")
     parser.add_argument("--seed", type=int, default=settings.generator_seed,
                         help="random seed for reproducible output")
     parser.add_argument("--fast", action="store_true",
@@ -404,6 +501,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="write JSON lines to this file instead of the console")
     parser.add_argument("--pretty", action="store_true",
                         help="human-readable console output instead of JSON")
+    parser.add_argument("--scenario", nargs="+", default=[], choices=[*SCENARIOS, "all"],
+                        help="fault scenarios to inject, in order ('all' = every scenario)")
+    parser.add_argument("--warmup", type=float, default=300.0,
+                        help="seconds of normal traffic before the first scenario (default: %(default)s)")
+    parser.add_argument("--gap", type=float, default=300.0,
+                        help="seconds of normal traffic after each scenario (default: %(default)s)")
+    parser.add_argument("--ground-truth", type=Path,
+                        help="ground-truth output file (default: data/ground_truth/<run_id>.jsonl)")
+    parser.add_argument("--list-scenarios", action="store_true",
+                        help="list available scenarios and exit")
     return parser.parse_args(argv)
 
 
@@ -429,9 +536,36 @@ def print_summary(levels: Counter, services: Counter, elapsed_s: float) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    duration = math.inf if args.duration <= 0 else args.duration
-    generator = LogGenerator(rate=args.rate, seed=args.seed)
 
+    if args.list_scenarios:
+        for scenario in SCENARIOS.values():
+            print(f"{scenario.name:<20} {scenario.duration_s:>5.0f} s  {scenario.description}")
+        return 0
+
+    # ---- schedule faults ----
+    names = list(SCENARIOS) if "all" in args.scenario else args.scenario
+    schedule, needed_s = build_schedule(names, args.warmup, args.gap) if names else ([], 0.0)
+
+    duration = math.inf if args.duration <= 0 else args.duration
+    if names and duration < needed_s:
+        duration = needed_s
+        print(f"Duration extended to {needed_s:.0f} s to fit the scenarios.", file=sys.stderr)
+
+    start = datetime.now(timezone.utc)
+    generator = LogGenerator(rate=args.rate, seed=args.seed, start=start,
+                             faults=schedule_faults(schedule))
+
+    # ---- ground truth (written before generation, so it exists even in real-time runs) ----
+    if schedule:
+        run_id = f"run-{start:%Y%m%d-%H%M%S}"
+        gt_path = args.ground_truth or Path("data/ground_truth") / f"{run_id}.jsonl"
+        write_ground_truth(ground_truth_records(schedule, start, run_id), gt_path)
+        print(f"Run {run_id}: ground truth written to {gt_path}", file=sys.stderr)
+        for scenario, offset in schedule:
+            print(f"  {scenario.name:<20} starts at +{offset:>5.0f} s  "
+                  f"({format_timestamp(start + timedelta(seconds=offset))})", file=sys.stderr)
+
+    # ---- generate ----
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         out: TextIO = args.output.open("w", encoding="utf-8", newline="\n")
