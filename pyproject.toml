@@ -1,6 +1,9 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "integration: needs the Docker stack (Kafka, PostgreSQL, Elasticsearch) running",
+]
 
 [tool.ruff]
 line-length = 110

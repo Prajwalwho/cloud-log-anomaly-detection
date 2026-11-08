@@ -15,8 +15,9 @@ and are never part of the log events themselves.
 Usage (run from the project root):
     python -m backend.log_generator.generator --duration 10 --pretty
     python -m backend.log_generator.generator --list-scenarios
-    python -m backend.log_generator.generator --scenario error_burst --fast --seed 42 --output data/processed/error_burst.jsonl
     python -m backend.log_generator.generator --scenario all --fast --seed 42 --output data/processed/all_faults.jsonl
+    python -m backend.log_generator.generator --kafka --duration 60
+    python -m backend.log_generator.generator --kafka --duration 0 --scenario all
 """
 from __future__ import annotations
 
@@ -35,6 +36,7 @@ from pathlib import Path
 from typing import Iterator, Sequence, TextIO
 
 from .config import settings
+from .producer import KafkaLogPublisher
 from .scenarios import SCENARIOS, Fault, Scenario, build_schedule, schedule_faults
 
 SCHEMA_VERSION = "1.0"
@@ -48,6 +50,8 @@ SLOW_FACTOR = 3.0
 LATENCY_SIGMA = 0.5
 # Probability that a step also writes a DEBUG line (cache hits etc.)
 DEBUG_PROBABILITY = 0.3
+# How often progress is printed while publishing to Kafka
+PROGRESS_INTERVAL_S = 5.0
 
 # Which hosts each service runs on
 HOSTS: dict[str, tuple[str, ...]] = {
@@ -498,7 +502,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--fast", action="store_true",
                         help="generate as fast as possible instead of in real time")
     parser.add_argument("--output", type=Path,
-                        help="write JSON lines to this file instead of the console")
+                        help="write JSON lines to this file")
+    parser.add_argument("--kafka", action="store_true",
+                        help="publish events to the Kafka logs topic (KAFKA_BOOTSTRAP_SERVERS in .env)")
     parser.add_argument("--pretty", action="store_true",
                         help="human-readable console output instead of JSON")
     parser.add_argument("--scenario", nargs="+", default=[], choices=[*SCENARIOS, "all"],
@@ -551,6 +557,18 @@ def main(argv: list[str] | None = None) -> int:
         duration = needed_s
         print(f"Duration extended to {needed_s:.0f} s to fit the scenarios.", file=sys.stderr)
 
+    # ---- Kafka: connect first, so a stopped stack fails before anything is written ----
+    publisher: KafkaLogPublisher | None = None
+    if args.kafka:
+        publisher = KafkaLogPublisher(settings.kafka_bootstrap_servers, settings.kafka_topic_logs)
+        try:
+            partitions = publisher.check_connection()
+        except RuntimeError as exc:
+            print(f"[FAIL] {exc}", file=sys.stderr)
+            return 1
+        print(f"Publishing to Kafka topic '{settings.kafka_topic_logs}' ({partitions} partitions) "
+              f"at {settings.kafka_bootstrap_servers}", file=sys.stderr)
+
     start = datetime.now(timezone.utc)
     generator = LogGenerator(rate=args.rate, seed=args.seed, start=start,
                              faults=schedule_faults(schedule))
@@ -565,16 +583,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {scenario.name:<20} starts at +{offset:>5.0f} s  "
                   f"({format_timestamp(start + timedelta(seconds=offset))})", file=sys.stderr)
 
-    # ---- generate ----
+    # ---- outputs ----
+    file_out: TextIO | None = None
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        out: TextIO = args.output.open("w", encoding="utf-8", newline="\n")
-    else:
-        out = sys.stdout
+        file_out = args.output.open("w", encoding="utf-8", newline="\n")
+    to_console = publisher is None and file_out is None
 
     levels: Counter = Counter()
     services: Counter = Counter()
     wall_start = time.monotonic()
+    last_progress = wall_start
 
     try:
         for offset, event in generator.events(duration):
@@ -582,20 +601,42 @@ def main(argv: list[str] | None = None) -> int:
                 delay = wall_start + offset - time.monotonic()
                 if delay > 0:
                     time.sleep(delay)
-            line = format_pretty(event) if (args.pretty and not args.output) else json.dumps(event)
-            out.write(line + "\n")
+
+            if publisher:
+                publisher.publish(event)
+            if file_out:
+                file_out.write(json.dumps(event) + "\n")
+            if to_console:
+                sys.stdout.write((format_pretty(event) if args.pretty else json.dumps(event)) + "\n")
+
             levels[event["level"]] += 1
             services[event["service"]] += 1
+
+            if publisher:
+                now = time.monotonic()
+                if now - last_progress >= PROGRESS_INTERVAL_S:
+                    print(f"  ... {sum(levels.values())} events sent, "
+                          f"{publisher.delivered} confirmed by Kafka", file=sys.stderr)
+                    last_progress = now
     except KeyboardInterrupt:
         pass
     finally:
-        if args.output:
-            out.close()
-        else:
-            out.flush()
+        if file_out:
+            file_out.close()
+        if to_console:
+            sys.stdout.flush()
+
+    exit_code = 0
+    if publisher:
+        undelivered = publisher.flush()
+        print(f"\nKafka: {publisher.delivered} delivered, {publisher.failed} failed, "
+              f"{undelivered} still queued", file=sys.stderr)
+        if publisher.failed or undelivered:
+            print(f"[FAIL] Not all events reached Kafka. Last error: {publisher.last_error}", file=sys.stderr)
+            exit_code = 1
 
     print_summary(levels, services, time.monotonic() - wall_start)
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":
