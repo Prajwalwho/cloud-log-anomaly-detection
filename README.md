@@ -2,14 +2,14 @@
 
 A real-time system that collects logs from cloud services, detects abnormal patterns using machine learning, and alerts administrators before problems turn into failures.
 
-> **Status:** In development — infrastructure ready (Phase 2 of 11). See [Roadmap](#roadmap).
+> **Status:** In development. Infrastructure, log generation and ingestion are complete (Phases 0–4). Next: ML research (Phase 5). See [Roadmap](#roadmap).
 
 ---
 
 ## How it works
 
 ```
-Log generator / services
+Log generator (5 simulated microservices, fault injection)
         │
         ▼
    Apache Kafka  (logs.raw)
@@ -26,11 +26,11 @@ Elasticsearch  Kafka (anomalies.detected) ──► Alerting (Telegram / email)
           React dashboard
 ```
 
-1. Services (simulated microservices) produce structured JSON logs to Kafka.
-2. The **ingestion service** validates logs and stores them in Elasticsearch.
-3. The **detection service** groups logs into 60-second windows per service, extracts features (log templates via Drain, error rate, latency), and scores each window with an ML model.
-4. Anomalies get a severity level and are stored in PostgreSQL; critical ones trigger alerts.
-5. The **dashboard** shows live anomalies, alerts, log search and historical trends.
+1. The **log generator** simulates user requests through five microservices and can inject faults at known times, recording the ground truth.
+2. The **ingestion service** validates every log against the contract and stores it in Elasticsearch; invalid messages go to a dead-letter topic.
+3. The **detection service** groups logs into 60-second windows per service and scores each window with an ML model. *(Phase 6)*
+4. Anomalies get a severity level and are stored in PostgreSQL; serious ones trigger alerts. *(Phases 6, 8)*
+5. The **dashboard** shows live anomalies, alerts, log search and trends. *(Phases 7, 9)*
 
 ## Technology stack
 
@@ -40,6 +40,7 @@ Elasticsearch  Kafka (anomalies.detected) ──► Alerting (Telegram / email)
 | Streaming | Apache Kafka 3.9 (KRaft) |
 | Log storage and search | Elasticsearch 8.17 |
 | Structured database | PostgreSQL 16 |
+| Validation | Pydantic 2 |
 | Machine learning | Scikit-learn, Drain3 |
 | Backend API | FastAPI, WebSockets |
 | Frontend | React, Vite, Recharts |
@@ -65,6 +66,9 @@ cd cloud-log-anomaly-detection
 
 # Start the infrastructure (waits for health checks and runs a smoke test)
 .\scripts\start.ps1 up
+
+# Activate the Python environment in every new terminal
+backend\.venv\Scripts\Activate.ps1
 ```
 
 If PowerShell blocks the scripts, run once:
@@ -72,17 +76,66 @@ If PowerShell blocks the scripts, run once:
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
+## Running the pipeline
+
+Use two terminals, both with the virtual environment activated.
+
+**Terminal 1 — ingestion service (Kafka → Elasticsearch):**
+```powershell
+python -m backend.ingestion.consumer
+```
+
+**Terminal 2 — send logs:**
+```powershell
+# 60 seconds of normal traffic
+python -m backend.log_generator.generator --kafka --duration 60
+
+# Normal traffic with a fault: 1 min normal, 2 min payment errors, 1 min normal
+python -m backend.log_generator.generator --kafka --scenario error_burst --warmup 60 --gap 60
+
+# All five fault scenarios (about 41 minutes)
+python -m backend.log_generator.generator --kafka --scenario all
+```
+
+**Search the stored logs:**
+```powershell
+python scripts/search_logs.py --minutes 10
+python scripts/search_logs.py --minutes 10 --level ERROR
+python scripts/search_logs.py --minutes 10 --q "timeout"
+python scripts/search_logs.py --trace <trace_id>
+```
+
+**Other tools:**
+
+| Command | Purpose |
+|---|---|
+| `python -m backend.log_generator.generator --list-scenarios` | List fault scenarios |
+| `python -m backend.log_generator.generator --scenario all --fast --seed 42 --output data/processed/all_faults.jsonl` | Generate a labelled dataset to a file in seconds |
+| `python scripts/summarize_logs.py <file> --ground-truth <gt file>` | Per-minute summary with fault windows marked |
+| `python scripts/kafka_peek.py --show 5` | Inspect logs.raw and check the keying contract |
+| `python scripts/send_invalid_logs.py` | Send broken messages to test validation |
+| `python scripts/pipeline_latency.py --minutes 3` | Measure pipeline latency after a live run |
+
 ## Managing the stack
 
 | Command | What it does |
 |---|---|
 | `.\scripts\start.ps1 up` | Start all services, wait until healthy, run smoke test |
-| `.\scripts\start.ps1 down` | Stop services (data kept) |
+| `.\scripts\start.ps1 down` | Stop services (PostgreSQL and Elasticsearch data kept; Kafka data cleared) |
 | `.\scripts\start.ps1 status` | Show container status |
-| `.\scripts\start.ps1 logs` | Follow logs of all services |
+| `.\scripts\start.ps1 logs` | Follow logs of all services (Ctrl+C to stop) |
 | `.\scripts\start.ps1 logs kafka` | Follow logs of one service (`kafka`, `postgres`, `elasticsearch`) |
 | `.\scripts\start.ps1 test` | Run the smoke test only |
 | `.\scripts\start.ps1 reset` | Delete all data volumes (asks for confirmation) |
+
+## Tests
+
+```powershell
+pytest                    # all tests (integration tests are skipped if the stack is down)
+pytest tests/unit         # unit tests only, no Docker needed
+```
+
+Integration test files end in `_integration.py` or live in `tests/integration/`.
 
 ## Service ports
 
@@ -96,27 +149,28 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 ```
 backend/
-  api/            FastAPI application (REST + WebSocket)
-  ingestion/      Kafka consumer → validation → Elasticsearch
-  detection/      Preprocessing, features, ML models, scoring
-  log_generator/  Simulated microservice logs and fault scenarios
-frontend/         React + TypeScript dashboard
+  log_generator/  Simulated microservices, fault scenarios, Kafka producer
+  ingestion/      Kafka consumer, validation, dead-letter, Elasticsearch sink
+  detection/      Preprocessing, features, ML models, scoring (Phase 5–6)
+  api/            FastAPI application (Phase 7)
+frontend/         React + TypeScript dashboard (Phase 9)
 infrastructure/   Docker Compose, database schema, monitoring config
-data/             Datasets (raw, processed, sample) — not committed
+data/             Datasets and ground truth (generated, not committed)
 experiments/      Notebooks and model comparison results
-models/           Trained models and metadata — not committed
-docs/             Architecture, design contracts, research, devlog
-scripts/          Setup, start and smoke-test scripts
-tests/            Unit, integration and performance tests
+models/           Trained models and metadata (not committed)
+docs/             Architecture, design documents, research, devlog
+scripts/          Setup, start, smoke test and pipeline tools
+tests/            Unit and integration tests
 ```
 
 ## Documentation
 
 | Document | Contents |
 |---|---|
-| [System architecture](docs/architecture/system-architecture.md) | Components, data flow, design decisions |
+| [System architecture](docs/architecture/system-architecture.md) | Components, data flow, design decisions, evaluation |
 | [Data contracts](docs/design/contracts.md) | Log schema, Kafka topics, message formats |
-| [Database design](docs/design/database-design.md) | Tables, relationships, indexes |
+| [Database design](docs/design/database-design.md) | PostgreSQL tables, relationships, indexes |
+| [Elasticsearch design](docs/design/elasticsearch-design.md) | Index naming, template, mappings, idempotency |
 | [API contracts](docs/design/api-contracts.md) | REST endpoints and WebSocket protocol |
 | [Development log](docs/devlog/) | Daily progress, decisions and problems solved |
 
@@ -127,24 +181,26 @@ tests/            Unit, integration and performance tests
 | 0 | Environment cleanup and core decisions | ✅ Done |
 | 1 | Design contracts (logs, Kafka, database, API) | ✅ Done |
 | 2 | Infrastructure (Kafka, PostgreSQL, Elasticsearch) | ✅ Done |
-| 3 | Log generator with fault injection | ⏳ Next |
-| 4 | Ingestion pipeline | Pending |
-| 5 | ML research on benchmark datasets (HDFS, BGL) | Pending |
+| 3 | Log generator with fault injection and ground truth | ✅ Done |
+| 4 | Ingestion pipeline (validation, dead-letter, Elasticsearch) | ✅ Done |
+| 5 | ML research on benchmark datasets (HDFS, BGL) | ⏳ Next |
 | 6 | Real-time detection service | Pending |
 | 7 | Backend API | Pending |
 | 8 | Alerting | Pending |
 | 9 | React dashboard | Pending |
-| 10 | Integration, evaluation, performance testing | Pending |
+| 10 | Integration, live evaluation, performance testing | Pending |
 | 11 | Documentation and final report | Pending |
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
+| Scripts say Docker is not running | Start Docker Desktop, wait until it is ready, then `.\scripts\start.ps1 up` |
 | PostgreSQL "password authentication failed" | Another PostgreSQL may be using the port. Change `POSTGRES_PORT` in `.env`, then `.\scripts\start.ps1 reset` |
 | "port is already allocated" / "forbidden by its access permissions" | Port is used or reserved by Windows. List reserved ranges: `netsh interface ipv4 show excludedportrange protocol=tcp` and pick a free port |
-| Smoke test says Kafka topics are missing | Topics are created a few seconds after startup; use `start.ps1 up`, which waits automatically |
+| Smoke test says Kafka topics are missing | Topics are created a few seconds after startup; `start.ps1 up` waits automatically |
 | Elasticsearch unhealthy | Check memory in Docker Desktop (needs ~2 GB) and run `.\scripts\start.ps1 logs elasticsearch` |
+| pytest "import file mismatch" | Two test files share a name; integration tests must end in `_integration.py` |
 
 ## License
 

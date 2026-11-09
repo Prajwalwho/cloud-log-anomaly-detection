@@ -1,418 +1,223 @@
 # System Architecture
 ## Cloud Log Anomaly Detection for Proactive Fault Management
 
+Version: 2.0 (updated after Phase 4)
+Status legend: **Implemented** = built and tested; **Planned** = designed, not yet built.
+
+---
+
 ### 1. System Overview
 
-The proposed system is a real-time cloud log monitoring and anomaly detection platform designed to identify abnormal patterns in application and infrastructure logs.
+A real-time platform that collects logs from cloud services, detects abnormal behaviour with
+machine learning, and alerts administrators before problems turn into failures.
 
-The system collects logs from multiple sources, processes them through a distributed streaming pipeline, extracts meaningful features, and applies machine learning algorithms to identify anomalous behavior.
-
-Detected anomalies are assigned severity levels, stored for historical analysis, and displayed through a centralized monitoring dashboard.
-
-The architecture separates log ingestion, anomaly detection, storage, and API services to support independent processing, scalability, and fault isolation.
+Logs flow through a streaming pipeline (Kafka), are validated and stored for search
+(Elasticsearch), and are analysed in fixed time windows by a detection service. Anomalies are
+scored, given a severity, stored in PostgreSQL and shown on a live dashboard.
 
 ### 2. Architectural Objectives
 
-- Centralized collection of logs from multiple services.
-- Real-time log processing and anomaly detection.
-- Identification of unusual log patterns without requiring extensive labeled datasets.
-- Independent ingestion and detection services.
-- Severity-based anomaly classification.
+- Centralised collection of logs from multiple services.
+- Real-time processing and anomaly detection.
+- Detection without requiring large labelled datasets (unsupervised and statistical methods).
+- Severity-based classification and alerting.
 - Historical log search and anomaly analysis.
-- Real-time dashboard updates and alert management.
-- Measurable performance and scalability evaluation.
+- Measurable accuracy, latency and throughput.
+- No log loss when components fail or restart.
 
 ### 3. Technology Stack
 
 | Layer | Technology |
 |---|---|
-| Programming language | Python 3.12 |
-| Backend API | FastAPI |
-| Frontend | React, TypeScript, Vite |
-| Streaming | Apache Kafka |
-| Kafka client libraries | confluent-kafka, aiokafka |
+| Programming language | Python 3.12, TypeScript |
+| Streaming | Apache Kafka 3.9 (KRaft mode, single broker) |
+| Log storage and search | Elasticsearch 8.17 (single node) |
+| Structured database | PostgreSQL 16 |
 | Log template mining | Drain (drain3) |
-| Log storage and search | Elasticsearch 8 |
-| Structured database | PostgreSQL |
-| Database access | SQLAlchemy, Psycopg |
 | Machine learning | Scikit-learn |
-| Model serialization | Joblib |
-| Data processing | NumPy, Pandas |
-| Containerization | Docker, Docker Compose |
+| Validation | Pydantic 2 |
+| Backend API | FastAPI, WebSockets |
+| Frontend | React, TypeScript, Vite, Recharts |
+| Containers | Docker, Docker Compose |
 | Monitoring | Prometheus, Grafana |
-| Real-time communication | WebSockets |
 
 ### 4. System Components
 
-#### 4.1 Log Sources
-
-Generate or collect logs from simulated cloud applications, microservices, and infrastructure components.
-
-The initial implementation will simulate multiple services, including:
-
-- Authentication service
-- Payment service
-- Order service
-- Inventory service
-- API gateway
-
-Each service will generate realistic log events with timestamps, log levels, messages, service identifiers, and other relevant metadata.
-
-#### 4.2 Log Collection
-
-Collect logs using a custom log generator initially.
-
-Fluent Bit or OpenTelemetry can be integrated as additional collection mechanisms in future enhancements.
-
-#### 4.3 Streaming Layer
-
-Apache Kafka provides the distributed event-streaming layer.
-
-Responsibilities:
-
-- Receive incoming log events.
-- Buffer events during processing.
-- Support asynchronous producer-consumer communication.
-- Decouple log generation from ingestion and anomaly detection.
-- Allow independent consumer groups to process the same events.
-
-The system will initially use a single-broker Kafka deployment in KRaft mode through Docker Compose.
-
-#### 4.4 Ingestion Service
-
-The Python ingestion service independently consumes messages from the `logs.raw` Kafka topic.
-
-Its responsibilities include:
-
-- Consuming incoming log events.
-- Validating messages against the canonical log schema using Pydantic.
-- Sending invalid messages to the `logs.deadletter` topic.
-- Indexing valid log events into Elasticsearch.
-- Handling retries and Elasticsearch failures.
-- Managing Kafka offsets to support reliable processing.
-
-The ingestion service is responsible for message validation and log storage.
-
-It does not perform Drain-based log template extraction or machine learning inference.
-
-#### 4.5 Detection Service
-
-The detection service independently consumes the same `logs.raw` Kafka topic using a separate Kafka consumer group.
-
-Its responsibilities include:
-
-- Consuming incoming log events.
-- Parsing and normalizing log messages.
-- Extracting log templates using Drain3.
-- Grouping events into detection windows.
-- Extracting numerical and statistical features.
-- Applying trained anomaly detection models.
-- Calculating anomaly scores.
-- Assigning severity levels.
-- Persisting detected anomalies in PostgreSQL.
-- Publishing detected anomalies to Kafka.
-
-The detection service operates independently of the ingestion service. Both services receive their own copies of events through separate Kafka consumer groups.
-
-#### 4.6 Log Preprocessing and Feature Extraction
-
-The detection service performs log preprocessing before applying machine learning algorithms.
-
-The preprocessing pipeline includes:
-
-- Timestamp normalization.
-- Log message cleaning.
-- Log template extraction using Drain3.
-- Handling missing or malformed feature values.
-- Event counting.
-- Template frequency calculation.
-- Error-rate calculation.
-- Latency statistics.
-- Feature vector generation.
-
-Drain3 converts variable log messages into structured log templates that can be analyzed more effectively.
-
-The extracted features are used to represent the behavior of individual services over time.
-
-#### 4.7 Anomaly Detection Engine
-
-The detection engine evaluates processed log windows using multiple approaches.
-
-**Primary model: Isolation Forest**
-
-Identifies unusual observations by isolating them through random partitioning.
-
-**Comparison model: One-Class SVM**
-
-Learns a boundary around normal observations and identifies observations outside that boundary.
-
-**Baseline: Statistical Detection**
-
-Uses statistical thresholds and deviations to establish a baseline for comparison.
-
-The models will be evaluated experimentally rather than assuming one algorithm is universally superior.
-
-The initial approach will focus on unsupervised anomaly detection, where models learn normal behavior without requiring extensive labeled training data.
-
-#### 4.8 Severity Scoring
-
-Detected anomalies receive severity levels based on anomaly scores and configurable rules.
-
-Proposed categories:
-
-- Low
-- Medium
-- High
-- Critical
-
-Severity is an operational classification and is separate from the machine learning anomaly score.
-
-The severity component will convert model outputs into understandable classifications for dashboard visualization and alert generation.
-
-#### 4.9 Storage Layer
-
-**Elasticsearch**
-
-- Stores searchable log events.
-- Supports filtering and historical log analysis.
-- Enables efficient log retrieval.
-- Stores log metadata and template information where applicable.
-
-**PostgreSQL**
-
-- Stores detected anomalies.
-- Stores alert records and statuses.
-- Maintains structured application metadata.
-- Maintains model registry information.
-- Stores detection window metadata and model evaluation information where required.
-
-The Elasticsearch document identifier will be referenced by anomaly records in PostgreSQL when an anomaly is associated with a particular log document.
-
-#### 4.10 Backend API
-
-FastAPI provides the application interface.
-
-Responsibilities:
-
-- Retrieve logs from Elasticsearch.
-- Retrieve anomaly records from PostgreSQL.
-- Manage alerts.
-- Provide statistical summaries.
-- Expose service and model information.
-- Deliver real-time updates through WebSockets.
-- Support communication between the dashboard and backend services.
-
-The API service will use asynchronous communication where appropriate for real-time updates.
-
-#### 4.11 Frontend Dashboard
-
-The React dashboard provides:
-
-- System overview.
-- Total log volume.
-- Anomaly statistics.
-- Severity distribution.
-- Historical anomaly trends.
-- Searchable log records.
-- Anomaly details.
-- Alert management.
-- Real-time anomaly updates.
-
-The dashboard will communicate with FastAPI through HTTP APIs and WebSockets.
-
-#### 4.12 Monitoring Infrastructure
-
-Prometheus and Grafana will monitor application and infrastructure performance.
-
-Monitoring metrics will include:
-
-- Log ingestion throughput.
-- Detection processing throughput.
-- Detection latency.
-- Kafka consumer lag.
-- API response time.
-- CPU utilization.
-- Memory utilization.
-- Service health.
+#### 4.1 Log Generator — Implemented
+`backend/log_generator/`
+
+Simulates five microservices (api-gateway, auth, order, payment, inventory). Traffic is modelled as
+user requests that pass through the gateway to downstream services, so related logs share a
+`trace_id`, latencies add up along the call chain, and downstream failures appear as 502/503 errors
+at the gateway.
+
+- Poisson request arrivals with a ±30% sinusoidal load variation.
+- Log-normal latencies; slow calls logged as WARN; 0.2% baseline failure rate.
+- Periodic background logs (health checks, connection pool stats, batch jobs).
+- Five fault scenarios: error_burst, latency_spike, new_error, silent_service, cascading_failure.
+- Ground-truth file per run, never part of the log stream.
+- Reproducible with a fixed seed; real-time or fast mode; output to console, file or Kafka.
+
+#### 4.2 Streaming Layer (Kafka) — Implemented
+Decouples producers from consumers and buffers logs while consumers are down.
+
+| Topic | Partitions | Retention | Key | Purpose |
+|---|---|---|---|---|
+| logs.raw | 3 | 24 h | service | All incoming log events |
+| logs.deadletter | 1 | 7 days | — | Messages failing validation or storage |
+| anomalies.detected | 1 | 7 days | service | Detected anomalies (Planned producer) |
+
+The producer uses acks=all and idempotence (no loss or duplication from retries), lz4 compression
+and murmur2 partitioning.
+
+#### 4.3 Ingestion Service — Implemented
+`backend/ingestion/`
+
+Consumes `logs.raw` in batches (up to 500), validates each message against the log contract
+(Pydantic, strict types), stores valid events in Elasticsearch, and sends invalid ones, with the
+reason and original text, to `logs.deadletter`.
+
+Offsets are committed only after the batch is stored and every dead-letter message is confirmed
+(at-least-once delivery).
+
+#### 4.4 Storage — Elasticsearch Implemented, PostgreSQL schema Implemented
+- **Elasticsearch:** daily indices `logs-YYYY.MM.DD`, explicit mappings, idempotent writes.
+  See `docs/design/elasticsearch-design.md`.
+- **PostgreSQL:** services, model_registry, detection_windows, anomalies, alerts.
+  See `docs/design/database-design.md`. The tables exist; they are written from Phase 6.
+
+#### 4.5 Detection Service — Planned (Phase 6)
+Consumes `logs.raw` in its own consumer group, independently of ingestion. Groups logs into
+60-second windows per service, extracts features, scores each window with the active model,
+stores every window and every anomaly in PostgreSQL, and publishes anomalies to
+`anomalies.detected`.
+
+#### 4.6 Severity Scoring — Planned (Phase 6)
+Maps the normalised anomaly score (0–1) and configurable rules to LOW, MEDIUM, HIGH or CRITICAL.
+Severity is an operational classification, separate from the ML score.
+
+#### 4.7 Alerting — Planned (Phase 8)
+Creates alerts for HIGH and CRITICAL anomalies, groups repeated anomalies of one service into one
+open alert (deduplication), and notifies administrators (Telegram or email).
+
+#### 4.8 Backend API — Planned (Phase 7)
+FastAPI REST endpoints for logs, anomalies, alerts, statistics and models, plus a WebSocket for
+live events. See `docs/design/api-contracts.md`.
+
+#### 4.9 Frontend Dashboard — Planned (Phase 9)
+React dashboard: overview, log search, anomalies, alerts, trends, live updates.
+
+#### 4.10 Monitoring — Planned (Phase 10)
+Prometheus and Grafana for throughput, latency, resource use and service health.
 
 ### 5. End-to-End Data Flow
 
-The system follows this processing flow:
-
-1. Applications or the log generator produce log events.
-2. The log generator publishes events to the Kafka topic `logs.raw`.
-3. The ingestion service consumes `logs.raw` using its own consumer group.
-4. The detection service independently consumes `logs.raw` using a different consumer group.
-5. The ingestion service validates incoming messages against the canonical log schema.
-6. Invalid messages are published to `logs.deadletter`.
-7. Valid messages are indexed into Elasticsearch.
-8. The detection service parses and normalizes log messages.
-9. Drain3 extracts log templates from incoming messages.
-10. Events are grouped into detection windows.
-11. Feature extraction converts each window into a model-compatible representation.
-12. The anomaly detection engine calculates anomaly scores.
-13. The severity component assigns operational severity.
-14. Anomaly records are stored in PostgreSQL.
-15. Newly detected anomalies are published to `anomalies.detected`.
-16. FastAPI retrieves logs, anomalies, alerts, and statistical information.
-17. The React dashboard displays current and historical results.
-18. WebSockets deliver real-time anomaly updates to the dashboard.
+1. Services (the generator) publish JSON log events to `logs.raw`, keyed by service.
+2. The ingestion service validates each event; valid ones are bulk-indexed into Elasticsearch,
+   invalid ones go to `logs.deadletter`; offsets are committed after storage. *(Implemented)*
+3. The detection service reads the same topic independently, builds 60-second windows per service,
+   extracts features and scores each window. *(Planned)*
+4. Windows and anomalies are stored in PostgreSQL; anomalies are published to `anomalies.detected`. *(Planned)*
+5. Alerting turns serious anomalies into deduplicated alerts and notifications. *(Planned)*
+6. FastAPI serves logs (Elasticsearch) and anomalies, alerts and statistics (PostgreSQL), and pushes
+   live events over WebSockets to the React dashboard. *(Planned)*
 
 ### 6. Key Design Decisions
 
-#### 6.1 Detection as an Independent Service
+#### 6.1 Detection as an independent service
+Ingestion and detection consume `logs.raw` in different consumer groups. Each receives every log;
+slow detection never delays storage, and each service can be restarted or scaled independently.
 
-Ingestion and detection are separate services.
+#### 6.2 Key = service
+All logs of one service go to the same partition, so they are processed in order (needed for time
+windows). Trade-off: with 5 services and 3 partitions, load is uneven (one partition carried 60% in
+testing). Acceptable at this scale; a larger system would use more partitions or a composite key.
 
-Both consume the `logs.raw` Kafka topic using different consumer groups, so each receives every log independently.
+#### 6.3 Unit of detection
+- Live system: 60-second windows per service. Windows are created for every known service even when
+  no logs arrive, so a silent (crashed) service is detectable.
+- Benchmark datasets: sessions (HDFS block ids) or sliding windows (BGL).
 
-The ingestion service focuses on validation and log storage, while the detection service focuses on preprocessing, feature extraction, and anomaly detection.
+Window-level detection was chosen over line-level detection because most failures show up as changes
+in patterns across many lines, not in a single line.
 
-This separation provides several advantages:
+#### 6.4 Responsibility for parsing
+Ingestion only validates the structure of events. Log template extraction (Drain) belongs to the
+detection service.
 
-- A failure or slowdown in detection does not directly stop log ingestion and storage.
-- Ingestion and detection can be scaled independently.
-- Machine learning workloads do not need to run inside the ingestion service.
-- Each service has a clearly defined responsibility.
-- The architecture supports independent development and testing.
+#### 6.5 Delivery guarantees
+At-least-once delivery from Kafka (offsets committed after storage) plus idempotent writes
+(document id = event_id) gives effectively-once storage: no lost logs and no duplicates. Verified
+by re-reading the full topic: no duplicates were created.
 
-#### 6.2 Kafka Topics
+#### 6.6 Ground truth separation
+Injected faults are recorded in a separate ground-truth file and never appear in log events, so the
+detector cannot see the answers it is evaluated on (no label leakage).
 
-The initial system will use three Kafka topics.
+#### 6.7 Validation and dead-letter
+Invalid messages are never silently dropped. The original text and the reason are kept in
+`logs.deadletter` for inspection.
 
-| Topic | Producer | Consumer(s) | Purpose |
-|---|---|---|---|
-| `logs.raw` | Log generator / applications | Ingestion, Detection | All incoming log events |
-| `logs.deadletter` | Ingestion | Manual inspection | Messages that fail schema validation |
-| `anomalies.detected` | Detection | API / Alerting | Newly detected anomalies |
+### 7. Machine Learning Methodology — Planned (Phase 5)
 
-The ingestion and detection services will use separate consumer groups when consuming `logs.raw`.
+1. Benchmark datasets: HDFS and BGL from LogHub.
+2. Template extraction with Drain.
+3. Feature engineering: event count vectors per session/window; for the live system also error rate,
+   WARN rate, latency statistics and new-template counts.
+4. Models compared: statistical baseline, PCA, Isolation Forest, One-Class SVM.
+5. Training on normal data only, with time-ordered train/test splits.
+6. Threshold selection and score normalisation to 0–1.
+7. Comparative evaluation; no algorithm is assumed superior in advance.
 
-This ensures that both services receive every published log event independently.
+### 8. Evaluation
 
-#### 6.3 Unit of Detection
+**Detection accuracy:** precision, recall, F1, false positive rate, ROC-AUC
+- Offline on labelled benchmark datasets (HDFS, BGL).
+- Live on the simulated system against the generator's ground truth.
 
-**Live system**
+**Live evaluation details:**
+- A window counts as faulty if it overlaps a ground-truth fault interval.
+- Two levels: service level (was the root-cause service flagged?) and incident level (was any alert
+  raised during the incident?). Needed because faults affect other services too: a silent auth-service
+  also silences order and payment.
+- Partially faulty edge windows (faults rarely align with minute boundaries) reported separately.
+- Time to detect.
 
-Logs are grouped into fixed 60-second windows per service.
-
-Each window is converted into a feature vector containing information such as:
-
-- Log template counts.
-- Error rate.
-- Warning count.
-- Event frequency.
-- Latency statistics.
-
-The detection model evaluates each service window and calculates an anomaly score.
-
-**Benchmark datasets**
-
-Different datasets require different grouping strategies.
-
-- HDFS: Sessions grouped by HDFS block IDs.
-- BGL: Sliding windows over sequential log events.
-
-The grouping strategy will follow the structure and labeling methodology of each benchmark dataset.
-
-Window-level detection was chosen over line-level detection because many operational failures appear as changes in patterns across multiple log events rather than in a single log line.
-
-#### 6.4 Responsibility for Parsing
-
-The ingestion service only validates incoming messages against the canonical log schema.
-
-Log cleaning, normalization, and template extraction using Drain3 are performed by the detection service's preprocessing module.
-
-This separation avoids duplicating log parsing responsibilities and keeps the ingestion pipeline lightweight.
-
-### 7. Machine Learning Methodology
-
-The initial implementation will use unsupervised and statistical approaches.
-
-The experimental workflow:
-
-1. Dataset selection.
-2. Data exploration.
-3. Log preprocessing.
-4. Log template extraction.
-5. Feature engineering.
-6. Training and testing data preparation.
-7. Model training.
-8. Anomaly scoring.
-9. Threshold selection.
-10. Model evaluation.
-11. Comparative analysis.
-
-Potential benchmark datasets include HDFS, BGL, OpenStack, and Thunderbird from LogHub.
-
-The initial model comparison will include:
-
-- Statistical baseline.
-- Isolation Forest.
-- One-Class SVM.
-
-Models will be evaluated using appropriate dataset-specific grouping and ground-truth labels where available.
-
-### 8. Research Evaluation Metrics
-
-The system will be evaluated using:
-
-- Precision.
-- Recall.
-- F1-score.
-- False positive rate.
-- Detection latency.
-- Processing throughput.
-- CPU and memory utilization.
-- Scalability under increasing log volume.
-
-Where labeled datasets are available, detection results will be compared against ground-truth labels.
-
-Live evaluation will additionally use controlled fault-injection scenarios with recorded ground-truth information.
+**System performance:** pipeline latency (ingested_at − timestamp), throughput, CPU and memory use,
+behaviour under increasing load.
 
 ### 9. Proactive Fault Management
 
-The system aims to support proactive fault management by identifying unusual log behavior before it develops into a service failure.
-
-However, anomaly detection does not automatically establish fault prediction.
-
-Predictive claims will require experiments demonstrating that detected patterns consistently precede independently verified failures.
-
-The initial project will focus on detecting abnormal behavior and generating timely alerts. Future predictive capabilities will depend on experimental evidence.
+The system aims to support proactive fault management by identifying unusual log behaviour before it
+develops into a service failure. However, anomaly detection does not by itself establish fault
+prediction. Predictive claims require experiments showing that detected patterns consistently precede
+independently verified failures.
 
 ### 10. Reliability and Scalability
 
-The architecture will support:
+Implemented:
+- Asynchronous, decoupled components connected through Kafka.
+- No log loss when the consumer is down: logs wait in Kafka (verified: an 18,190-event backlog was
+  ingested after a consumer restart).
+- Retries with backoff for transient storage failures.
+- Containerised infrastructure with health checks.
 
-- Asynchronous log ingestion.
-- Independent ingestion and detection services.
-- Separate Kafka consumer groups.
-- Configurable processing thresholds.
-- Kafka message buffering.
-- Dead-letter handling for invalid messages.
-- Retry mechanisms for storage failures.
-- Persistent log and anomaly storage.
-- Containerized deployment.
-- Performance testing under different workloads.
-
-The system will be evaluated under increasing log volumes to identify throughput limits, processing delays, and resource requirements.
+Known limitations of the development setup:
+- Single Kafka broker and single Elasticsearch node (no replication).
+- Security (TLS, authentication) disabled locally.
+- Kafka data not persisted across `docker compose down`.
 
 ### 11. Future Enhancements
 
-- Distributed log collection.
-- Advanced log template mining.
-- Deep learning-based anomaly detection.
-- Root-cause analysis.
-- Temporal anomaly correlation.
-- Failure prediction using historical event sequences.
-- Multi-service dependency analysis.
-- Automated alert notification through email or Telegram.
-- Distributed deployment and horizontal scaling.
+- Distributed log collection (Fluent Bit, OpenTelemetry).
+- Deep learning sequence models (e.g. LSTM-based).
+- Root-cause analysis and multi-service correlation using trace_id.
+- Failure prediction from historical event sequences.
+- Index lifecycle management for log retention.
 
 ### 12. Conclusion
 
-The proposed architecture combines distributed event streaming, independent log ingestion and anomaly detection services, machine learning, searchable log storage, structured anomaly management, and real-time visualization into a unified cloud log monitoring platform.
-
-The design supports experimental evaluation of anomaly detection accuracy, processing performance, scalability, and operational usefulness.
-
-By separating ingestion from detection and using window-based analysis, the system provides a structured foundation for identifying unusual cloud application behavior and supporting proactive fault management.
+The architecture combines streaming infrastructure, validated and searchable log storage,
+machine-learning detection, structured anomaly management and real-time visualisation. Phases 1–4
+(design, infrastructure, log generation and ingestion) are implemented and tested; the detection,
+API, alerting and dashboard layers build on these foundations.
