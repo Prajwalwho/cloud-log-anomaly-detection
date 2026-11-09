@@ -17,8 +17,9 @@ class IngestionSettings(BaseSettings):
     ingestion_batch_size: int = 500          # max messages per batch
     ingestion_poll_timeout_s: float = 1.0    # how long to wait for a batch
 
-    # Elasticsearch (used from Day 10)
+    # Elasticsearch
     elasticsearch_url: str = "http://localhost:9200"
+    elasticsearch_index_prefix: str = "logs"  # daily indices: logs-YYYY.MM.DD
 
 
 settings = IngestionSettings()
