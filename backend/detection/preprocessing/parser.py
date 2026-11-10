@@ -1,0 +1,72 @@
+"""
+Log template extraction with Drain (drain3).
+
+Drain groups log messages with the same structure into clusters (templates) and replaces the
+variable parts with wildcards, for example:
+    "PacketResponder 1 for block blk_-1608 terminating"
+    -> "PacketResponder <NUM> for block <BLK> terminating"
+
+Masking replaces well-known variable values (block ids, IPs, UUIDs, hex values, file paths,
+numbers) BEFORE Drain sees the message. Drain then does not have to discover these variables
+itself, which makes templates more accurate, and allows a stricter similarity threshold so that
+messages differing in a real word (e.g. "terminating" vs "Interrupted.") stay separate.
+
+Used by the offline experiments (HDFS, BGL) and, from Phase 6, by the live detection service,
+so both parse logs the same way.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from drain3 import TemplateMiner
+from drain3.masking import MaskingInstruction
+from drain3.template_miner_config import TemplateMinerConfig
+
+# Order matters: specific patterns first, generic numbers last.
+# Masks are applied one after another, so later patterns see the output of earlier ones
+# (e.g. a path ending in a block id becomes "<PATH>/<BLK>").
+DEFAULT_MASKS: tuple[tuple[str, str], ...] = (
+    (r"blk_-?\d+", "BLK"),
+    (r"(\d{1,3}\.){3}\d{1,3}(:\d+)?", "IP"),
+    (r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "UUID"),
+    (r"\b0x[0-9a-fA-F]+\b", "HEX"),
+    (r"(/[\w.\-]+){2,}", "PATH"),                     # file paths with at least two segments
+    (r"(?<![A-Za-z0-9_])-?\d+(\.\d+)?(?![A-Za-z0-9_])", "NUM"),
+)
+
+# Similarity threshold chosen experimentally on the first 200,000 HDFS lines (devlog day 13):
+# 0.5 and 0.7 gave identical results and merged messages differing in one real word
+# ("terminating" vs "Interrupted.", "SocketTimeoutException" vs "EOFException", 4 of 5 words equal
+# = 0.8 similarity). 0.9 separated exactly those and left every other template unchanged,
+# because masking already removes the variable values.
+DEFAULT_SIM_THRESHOLD = 0.9
+DEFAULT_DEPTH = 4
+
+
+@dataclass(frozen=True)
+class Template:
+    template_id: int
+    template: str
+    count: int
+
+
+def create_template_miner(
+    sim_threshold: float = DEFAULT_SIM_THRESHOLD,
+    depth: int = DEFAULT_DEPTH,
+    masks: tuple[tuple[str, str], ...] = DEFAULT_MASKS,
+) -> TemplateMiner:
+    """A Drain template miner with masking; feed messages with miner.add_log_message(text)."""
+    config = TemplateMinerConfig()
+    config.drain_sim_th = sim_threshold
+    config.drain_depth = depth
+    config.masking_instructions = [MaskingInstruction(pattern, name) for pattern, name in masks]
+    config.mask_prefix = "<"
+    config.mask_suffix = ">"
+    config.profiling_enabled = False
+    return TemplateMiner(config=config)
+
+
+def templates_of(miner: TemplateMiner) -> list[Template]:
+    """Current templates of a miner, ordered by id."""
+    templates = [Template(c.cluster_id, c.get_template(), c.size) for c in miner.drain.clusters]
+    return sorted(templates, key=lambda t: t.template_id)
