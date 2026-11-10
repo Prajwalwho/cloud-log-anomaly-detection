@@ -1,5 +1,9 @@
 """Unit tests for Drain template extraction."""
-from backend.detection.preprocessing.parser import create_template_miner, templates_of
+from backend.detection.preprocessing.parser import (
+    SERVICE_LOG_MASKS,
+    create_template_miner,
+    templates_of,
+)
 
 
 def test_variable_values_are_masked_into_one_template():
@@ -53,3 +57,25 @@ def test_template_counts_are_tracked():
     for i in range(5):
         miner.add_log_message(f"Deleting block blk_{i} file /mnt/hadoop/dfs/data/current/subdir{i}/blk_{i}")
     assert sum(t.count for t in templates_of(miner)) == 5
+
+
+def test_service_masks_merge_user_ids():
+    miner = create_template_miner(masks=SERVICE_LOG_MASKS)
+    a = miner.add_log_message("Token validated for user u6601")
+    b = miner.add_log_message("Token validated for user u1234")
+    assert a["cluster_id"] == b["cluster_id"]
+    assert templates_of(miner)[0].template == "Token validated for user <ID>"
+
+
+def test_service_masks_merge_transaction_ids():
+    miner = create_template_miner(masks=SERVICE_LOG_MASKS)
+    a = miner.add_log_message("Payment txn_c9731bc4b8 processed for order 845970: amount 4163.57 INR")
+    b = miner.add_log_message("Payment txn_00a1f2e3d4 processed for order 123456: amount 99.10 INR")
+    assert a["cluster_id"] == b["cluster_id"]
+    assert templates_of(miner)[0].template == "Payment <ID> processed for order <NUM>: amount <NUM> INR"
+
+
+def test_default_masks_are_unchanged_for_offline_reproducibility():
+    miner = create_template_miner()
+    miner.add_log_message("Token validated for user u6601")
+    assert templates_of(miner)[0].template == "Token validated for user u6601"

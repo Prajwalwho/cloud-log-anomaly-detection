@@ -11,8 +11,11 @@ numbers) BEFORE Drain sees the message. Drain then does not have to discover the
 itself, which makes templates more accurate, and allows a stricter similarity threshold so that
 messages differing in a real word (e.g. "terminating" vs "Interrupted.") stay separate.
 
-Used by the offline experiments (HDFS, BGL) and, from Phase 6, by the live detection service,
-so both parse logs the same way.
+Mask sets:
+- DEFAULT_MASKS:      generic; used for HDFS (and, with additions, BGL) in the offline research.
+- SERVICE_LOG_MASKS:  DEFAULT_MASKS plus alphanumeric identifiers (user ids like "u6601",
+                      transaction ids like "txn_c9731bc4b8"); used for the simulated microservice
+                      logs and the live detection service.
 """
 from __future__ import annotations
 
@@ -33,6 +36,12 @@ DEFAULT_MASKS: tuple[tuple[str, str], ...] = (
     (r"(/[\w.\-]+){2,}", "PATH"),                     # file paths with at least two segments
     (r"(?<![A-Za-z0-9_])-?\d+(\.\d+)?(?![A-Za-z0-9_])", "NUM"),
 )
+
+# Microservice logs: identifiers that mix letters and digits (u6601, txn_c9731bc4b8) are variables.
+# Inserted before the generic NUM mask. Kept out of DEFAULT_MASKS so the offline HDFS/BGL results,
+# which were produced with DEFAULT_MASKS, remain reproducible.
+ALNUM_ID_MASK: tuple[str, str] = (r"\b(?=\w*[A-Za-z])(?=\w*\d)\w+\b", "ID")
+SERVICE_LOG_MASKS: tuple[tuple[str, str], ...] = DEFAULT_MASKS[:-1] + (ALNUM_ID_MASK,) + DEFAULT_MASKS[-1:]
 
 # Similarity threshold chosen experimentally on the first 200,000 HDFS lines (devlog day 13):
 # 0.5 and 0.7 gave identical results and merged messages differing in one real word
