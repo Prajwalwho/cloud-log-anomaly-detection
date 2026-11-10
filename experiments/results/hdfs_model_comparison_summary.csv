@@ -1,0 +1,6 @@
+model,F1 label-free p99.9,F1 validation-tuned,PR-AUC
+B4 lookup,0.9776,0.9776,0.9562
+One-Class SVM,0.9708,0.9759,0.9988
+PCA,0.9647,0.96,0.9947
+z-score,0.0024,0.7741,0.7562
+Isolation Forest,0.0,0.0449,0.018
