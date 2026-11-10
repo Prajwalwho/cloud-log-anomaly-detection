@@ -1,0 +1,53 @@
+template_id,normal_test_windows,lines,first_seen,in_training_anomalous_windows,template
+463,731,9541,2005-11-15,False,"<NUM> ddr error(s) detected and corrected on rank <NUM>, symbol <NUM> over <*> s"
+464,727,9450,2005-11-15,False,total of <*> ddr error(s) detected and corrected over <NUM> seconds
+461,512,2754,2005-11-15,False,<NUM> tree receiver <NUM> in re-synch state event(s) (dcr <HEX>) detected over <
+462,391,2277,2005-11-15,False,<NUM> torus receiver <*> input pipe error(s) (dcr <HEX>) detected and corrected 
+465,358,1274,2005-11-15,False,<NUM> L3 <*> error(s) (dcr <HEX>) detected and corrected over <NUM> seconds
+459,208,2162,2005-11-15,False,"critical input interrupt (unit=<HEX> bit=<HEX>): warning for torus <*> wire, sup"
+443,201,324,2005-10-28,False,ddr: activating redundant bit steering for next allocation: rank=<NUM> symbol=<N
+608,163,296,2005-12-03,False,ddr: Suppressing further CE interrupts
+460,91,1160,2005-11-15,False,"critical input interrupt (unit=<HEX> bit=<HEX>): warning for tree <*> wire, supp"
+567,58,252,2005-11-18,False,<NUM> torus sender <*> retransmission error(s) (dcr <HEX>) detected and correcte
+433,48,49,2005-10-15,False,data cache flush parity error detected. attempting to correct
+558,45,26109,2005-11-17,False,"ciod: Received signal <NUM>, code=<NUM>, errno=<NUM>, address=<HEX>"
+607,31,57,2005-12-03,False,external input interrupt (unit=<HEX> bit=<HEX>): number of corrected SRAM errors
+559,23,41,2005-11-17,False,"PrepareForService is being done on this Midplane (mLctn(<NODE>), mCardSernum(<HE"
+560,23,599,2005-11-17,False,"PrepareForService shutting down <*> card(mLctn(<NODE>), mCardSernum(<HEX>), mLp("
+564,20,44,2005-11-17,False,EndServiceAction is restarting the <*> cards in Midplane <NODE> as part of Servi
+588,18,31,2005-11-21,False,<HEX> L3 EDRAM error(s) (dcr <HEX>) detected and corrected over <NUM> seconds
+458,17,18,2005-11-15,False,BGLMaster has been started: ./BGLMaster --consoleip <IP> --consoleport <NUM> --c
+434,15,15,2005-10-15,False,data cache search parity error detected. attempting to correct
+566,12,15,2005-11-17,False,"<HEX> ddr error(s) detected and corrected on rank <NUM>, symbol <NUM> over <NUM>"
+619,11,66,2005-12-24,False,<NUM> L3 <*> error(s) (dcr <HEX>) detected and corrected over <HEX> seconds
+616,11,62,2005-12-15,False,ciod: generated <NUM> core files for program <PATH><IP>/dd3d
+620,10,88,2005-12-24,False,total of <NUM> ddr error(s) detected and corrected over <HEX> seconds
+591,9,10,2005-11-22,False,mmcs_db_server has been started: ./mmcs_db_server --useDatabase BGL --dbproperti
+602,8,130909,2005-12-01,False,<NUM> total interrupts. <NUM> critical input interrupts. <*> microseconds total 
+601,8,130895,2005-12-01,False,<NUM> microseconds spent in the rbs signal handler during <NUM> calls. <NUM> mic
+614,8,8,2005-12-09,False,<NUM> torus processor sram <*> error(s) (dcr <HEX>) detected and corrected over 
+621,6,44,2005-12-24,False,<NUM> torus receiver <*> input pipe error(s) (dcr <HEX>) detected and corrected 
+603,6,16,2005-12-01,False,<HEX> microseconds spent in the rbs signal handler during <*> calls. <*> microse
+624,4,4,2005-12-28,False,<NUM> torus processor sram reception error(s) (dcr <HEX>) detected and corrected
+467,4,32,2005-11-16,False,ciod: Z coordinate <NUM> exceeds physical dimension <NUM> at line <NUM> of node 
+610,3,8490,2005-12-03,False,"Kernel detected <HEX> integer alignment exceptions (<HEX>) iar <HEX>, dear <HEX>"
+584,2,74,2005-11-18,False,Hardware monitor caught java.net.SocketException: Broken pipe and is stopping
+625,2,7,2005-12-31,False,<NUM> torus sender <*> retransmission error(s) (dcr <HEX>) detected and correcte
+606,2,2,2005-12-01,False,<HEX> total interrupts. <NUM> critical input interrupts. <NUM> microseconds tota
+604,2,4,2005-12-01,False,instance of a correctable ddr. RAS KERNEL INFO <NUM> microseconds spent in the r
+605,2,4,2005-12-01,False,max time in a cr RAS KERNEL INFO <NUM> total interrupts. <NUM> critical input in
+623,2,38,2005-12-26,False,"ciod: for node <NUM>, incomplete data written to core file core.<NUM>"
+194,1,8,2005-06-21,True,ciod: Unexpected eof at line <NUM> of node map file <*>
+450,1,1,2005-11-07,False,Temperature Over Limit on link card
+565,1,1,2005-11-17,False,Target=ido://<MAC><PATH> Message=Invalid JtagId = <HEX> Run environmental monito
+585,1,1024,2005-11-18,False,"ciod: Error loading -mode VN: invalid or missing program image, No such file or "
+587,1,4477,2005-11-21,False,MACHINE CHECK DCR read timeout (mc=e08x iar <HEX> lr <HEX>)
+569,1,2,2005-11-18,False,com.ibm.bgldevices.BulkPowerModule with VPD of com.ibm.bgldevices.BulkPowerModul
+599,1,8,2005-11-29,False,ciod: Error creating node map from file my_map.txt: Argument list too long
+598,1,24,2005-11-29,False,ciod: Error creating node map from file my_map.txt: No such file or directory
+600,1,1,2005-11-30,False,<NUM> torus receiver sram ecc error(s) (dcr <HEX>) detected and corrected over <
+597,1,24,2005-11-29,False,ciod: X coordinate <NUM> exceeds physical dimension <NUM> at line <NUM> of node 
+612,1,1024,2005-12-07,False,ciod: Error loading <PATH>: not a CNK program image
+613,1,2,2005-12-08,False,ciod: generated <NUM> core files for program <PATH><HEX><PATH>
+622,1,1,2005-12-26,False,EndServiceAction <NUM> performed upon <NODE> by bertsch2
+626,1,1,2006-01-03,False,<NUM> torus non-crc error(s) (dcr <HEX>) detected and corrected over <NUM> secon
