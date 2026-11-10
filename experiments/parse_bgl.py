@@ -38,15 +38,22 @@ from backend.detection.preprocessing.parser import (  # noqa: E402
     templates_of,
 )
 
-# BGL-specific masks, applied before the generic ones:
-# - NODE: node names such as R02-M1-N0-C:J12-U11
-# - HEX: bare hexadecimal values without "0x" (6+ hex characters containing at least one digit),
-#   as in CPU register dumps ("00000000:9a94a344 ... lr:00009f44"). Without this mask every dump
-#   becomes its own template. Kept BGL-only: in the shared default it would turn long decimal
-#   numbers (e.g. HDFS sizes, generator order ids) into <HEX> and change existing templates.
+# BGL-specific masks, applied before the generic ones (order matters):
+# - DATE: full dates such as "Mon Sep 26 14:05:33 2005"
+# - MAC: colon-separated hex pairs such as "FF:F2:9F:16:D7:FD"
+# - NODE: compute node names, long (R02-M1-N0-C:J12-U11) and short (R30-M0, R22)
+# - IONODE: I/O node names such as bglio71
+# - HEX: bare hexadecimal values without "0x": 6+ hex characters containing a digit
+#   (register dumps such as "9a94a344"), or 8+ hex characters (e.g. "fffffffc")
+# Kept BGL-only: in the shared default some of these would change HDFS and generator templates
+# (e.g. long decimal numbers would become <HEX> instead of <NUM>).
 BGL_MASKS = (
-    (r"\bR\d{2}-M\d-[\w:-]+", "NODE"),
-    (r"\b(?=[0-9a-fA-F]*\d)[0-9a-fA-F]{6,}\b", "HEX"),
+    (r"\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) +\d{1,2} "
+     r"\d{2}:\d{2}:\d{2}( \d{4})?", "DATE"),
+    (r"\b[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){3,}\b", "MAC"),
+    (r"\bR\d{2}(-[\w:]+)*", "NODE"),
+    (r"\bbglio\d+\b", "IONODE"),
+    (r"\b(?=[0-9a-fA-F]*\d)[0-9a-fA-F]{6,}\b|\b[0-9a-fA-F]{8,}\b", "HEX"),
 ) + DEFAULT_MASKS
 PROGRESS_EVERY = 500_000
 
