@@ -1,0 +1,7 @@
+config,precision,recall,f1,full_recall,edge_recall,incidents,false_alarms_quiet,quiet_fp_rate,seconds
+A global PCA raw,0.571,0.762,0.653,0.857,0.714,6/7,0,0.0,0.2
+B global PCA log,0.571,0.952,0.714,1.0,0.929,7/7,0,0.0,0.2
+C per-service PCA raw,0.567,0.81,0.667,0.857,0.786,7/7,0,0.0,0.2
+D per-service PCA log,0.543,0.905,0.679,1.0,0.857,7/7,0,0.0,0.2
+E per-service OCSVM raw,0.345,0.952,0.506,1.0,0.929,7/7,3,0.15,0.2
+F per-service OCSVM log,0.357,0.952,0.519,1.0,0.929,7/7,3,0.15,0.2
