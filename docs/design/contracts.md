@@ -1,8 +1,8 @@
 # Data Contracts
 ## Cloud Log Anomaly Detection for Proactive Fault Management
 
-Document version: 1.1 (message schema_version stays "1.0": only optional fields were added, see Section 7)
-Status: Implemented for logs, dead-letter, anomalies and ground truth.
+Document version: 1.2 (message schema_version stays "1.0": only optional fields and a new topic were added, see Section 7)
+Status: Implemented for logs, dead-letter, anomalies, alert events and ground truth.
 
 This document defines the formats of all data exchanged between system components. Every service must follow these contracts.
 
@@ -97,9 +97,11 @@ The detection service reads `logs.raw` independently and applies rules 1, 2 (for
 such messages are counted and skipped, so an invalid timestamp can never move its event-time watermark.
 (Fast-mode test replays, whose timestamps are deliberately in the future, use `--allow-future`.)
 
+Ingestion stores timestamps in Elasticsearch in the format of Section 1 (millisecond precision).
+
 ### 2.5 Ground truth is never part of the log
 
-Log events do **not** carry anomaly labels. When the log generator injects a fault, it writes the ground truth to a separate file (Section 5.4). This prevents label leakage: the detector can never see the answer it is being evaluated on.
+Log events do **not** carry anomaly labels. When the log generator injects a fault, it writes the ground truth to a separate file (Section 5.5). This prevents label leakage: the detector can never see the answer it is being evaluated on.
 
 ---
 
@@ -128,7 +130,11 @@ The setup has a single broker, so replication factor is 1 for all topics. This i
 |---|---|---|---|---|---|
 | `logs.raw` | 3 | 24 hours | `service` | Log generator / applications | Ingestion (`ingestion-group`), Detection (`detection-group`) |
 | `logs.deadletter` | 1 | 7 days | none | Ingestion | Manual inspection |
-| `anomalies.detected` | 1 | 7 days | `service` | Detection | API (`api-group`), Alerting (`alerting-group`) |
+| `anomalies.detected` | 1 | 7 days | `service` | Detection | Alerting (`alerting-group`), API (all partitions assigned, see 4.2) |
+| `alerts.events` | 1 | 7 days | `service` | Alerting | API (all partitions assigned, see 4.2) |
+
+`alerts.events` (added in Phase 8) is created by the alerting service and the API on start-up if it does not exist;
+the other topics are created by `kafka-init`.
 
 ### 4.1 Why `service` is the message key
 
@@ -140,6 +146,13 @@ therefore closes windows using a per-partition watermark (detection-design.md, S
 ### 4.2 Consumer groups
 
 Ingestion and detection use different consumer groups on `logs.raw`, so each receives every message. Slow detection does not delay storage, and either service can be restarted or scaled independently.
+
+The alerting service uses `alerting-group`; a new group starts at the end of `anomalies.detected`, so old and test
+messages are not turned into alerts.
+
+The API broadcasts events to browsers, so every API instance must receive every message. It does not join a
+balanced consumer group (which would divide partitions between instances); it assigns itself all partitions at
+the current end offset and never commits offsets (`api-group` is used as a label only).
 
 ---
 
@@ -225,7 +238,49 @@ Published by the detection service after the anomaly is stored in PostgreSQL (Po
 | `rule` | string or null | Optional (1.1): `"no_logs"` if flagged by the no-logs rule |
 | `reasons` | array of strings | Optional (1.1): human-readable reasons for the severity, strongest first |
 
-### 5.4 Ground-truth record (file, not Kafka)
+### 5.4 `alerts.events`
+
+Published by the alerting service whenever an alert is created, updated (new anomaly, escalation, notification
+sent) or resolved. The alert is in the API's alert item format (api-contracts.md §3.8), so the API forwards it to
+browsers unchanged.
+
+```json
+{
+  "schema_version": "1.0",
+  "type": "alert.updated",
+  "anomaly_id": "c4e8a2f1-6b3d-4a9e-8c7f-0d1e2b3a4c5d",
+  "alert": {
+    "id": "135cf5d6-b1ca-4235-acc0-d9836020138d",
+    "service": "payment-service",
+    "severity": "CRITICAL",
+    "title": "Error rate increase in payment-service",
+    "message": "error rate 38.9%",
+    "status": "OPEN",
+    "occurrence_count": 2,
+    "first_seen_at": "2026-11-13T19:13:06.000Z",
+    "last_seen_at": "2026-11-13T19:14:05.000Z",
+    "acknowledged_at": null,
+    "acknowledged_by": null,
+    "resolved_at": null,
+    "notification_sent": true
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `type` | `alert.created` or `alert.updated` |
+| `anomaly_id` | The anomaly that caused the change; `null` when the alert was resolved automatically |
+| `alert` | The alert after the change |
+
+Alert lifecycle (alerting service):
+- An anomaly joins an `OPEN`/`ACKNOWLEDGED` alert of the same service whose `last_seen_at` is within 5 minutes;
+  otherwise a new alert opens, but only from anomalies of severity `MEDIUM` or higher.
+- Alert severity is the highest severity of its anomalies; `message` holds the latest anomaly's reasons.
+- An alert without new anomalies for 5 minutes is `RESOLVED` automatically. Operators can acknowledge or resolve
+  alerts through the API.
+
+### 5.5 Ground-truth record (file, not Kafka)
 
 Written by the log generator to `data/ground_truth/<run_id>.jsonl`, one JSON object per line:
 
@@ -255,3 +310,4 @@ During evaluation, a detection window counts as a true positive if it overlaps a
 |---|---|
 | 1.0 | Initial contracts (Day 1) |
 | 1.1 | `anomalies.detected`: optional `model_id`; summary fields `warn_rate`, `p95_latency_ms`, `raw_score`, `threshold`, `rule`, `reasons`. Detection-side validation rules (§2.4). Day 25 publisher sent a nested `model` object and non-millisecond timestamps, which violated §5.3; fixed in code (Day 27) |
+| 1.2 | New topic `alerts.events` (§4, §5.4) with the alert lifecycle; alerting consumer group; API consumption without a balanced group (§4.2); ingestion stores millisecond timestamps (Day 29) |

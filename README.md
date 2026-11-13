@@ -2,7 +2,7 @@
 
 A real-time system that collects logs from cloud services, detects abnormal patterns using machine learning, and alerts administrators before problems turn into failures.
 
-> **Status:** In development. Infrastructure, log generation, ingestion, ML research, the real-time detection service and the backend API are complete (Phases 0–7). Next: Alerting (Phase 8). See [Roadmap](#roadmap).
+> **Status:** In development. Infrastructure, log generation, ingestion, ML research, real-time detection, the backend API and alerting are complete (Phases 0–8). Next: React dashboard (Phase 9). See [Roadmap](#roadmap).
 
 ---
 
@@ -16,22 +16,24 @@ Log generator (5 simulated microservices, fault injection)
      │        │
      ▼        ▼
  Ingestion   Detection ──────► PostgreSQL (windows, anomalies, alerts, models)
-     │        │
-     ▼        ▼
-Elasticsearch  Kafka (anomalies.detected) ──► Alerting (Telegram / email)
-     │                     │
-     └──────► FastAPI ◄────┘
-                 │  REST + WebSocket
-                 ▼
-          React dashboard
+     │        │                     ▲
+     ▼        ▼                     │
+Elasticsearch  Kafka (anomalies.detected) ──► Alerting ──► Telegram
+     │                     │                     │
+     │                     ▼                     ▼
+     └──────────────►  FastAPI  ◄──── Kafka (alerts.events)
+                          │  REST + WebSocket
+                          ▼
+                   React dashboard
 ```
 
 1. The **log generator** simulates user requests through five microservices and can inject faults at known times, recording the ground truth.
 2. The **ingestion service** validates every log against the contract and stores it in Elasticsearch; invalid messages go to a dead-letter topic.
 3. The **detection service** reads the same Kafka topic independently, parses messages into templates (Drain), groups logs into 60-second windows per service and scores each window with a PCA model.
-4. Every anomaly gets a **severity** (LOW–CRITICAL) with human-readable **reasons**, is stored in PostgreSQL and published to `anomalies.detected`; serious ones will trigger alerts. *(alerting: Phase 8)*
-5. The **API** serves logs, anomalies, alerts, statistics and models over REST, and pushes new anomalies to browsers over a WebSocket within about a second.
-6. The **dashboard** shows live anomalies, alerts, log search and trends. *(Phase 9)*
+4. Every anomaly gets a **severity** (LOW–CRITICAL) with human-readable **reasons**, is stored in PostgreSQL and published to `anomalies.detected`.
+5. The **alerting service** groups anomalies of one service into **alerts**, escalates them, resolves them automatically after 5 quiet minutes, and sends **Telegram** messages for HIGH and CRITICAL alerts.
+6. The **API** serves logs, anomalies, alerts, statistics and models over REST, and pushes anomaly and alert events to browsers over a WebSocket within about a second.
+7. The **dashboard** shows live anomalies, alerts, log search and trends. *(Phase 9)*
 
 ## Technology stack
 
@@ -44,6 +46,7 @@ Elasticsearch  Kafka (anomalies.detected) ──► Alerting (Telegram / email)
 | Validation | Pydantic 2 |
 | Machine learning | Scikit-learn, Drain3 |
 | Backend API | FastAPI, WebSockets |
+| Notifications | Telegram Bot API |
 | Frontend | React, Vite, Recharts |
 | Containers | Docker, Docker Compose |
 | Monitoring | Prometheus, Grafana (planned) |
@@ -55,6 +58,7 @@ Elasticsearch  Kafka (anomalies.detected) ──► Alerting (Telegram / email)
 - [Node.js](https://nodejs.org/) and npm
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) with at least 4 GB of memory available
 - Git
+- Optional: a Telegram account for notifications
 
 ## Quick start
 
@@ -79,28 +83,18 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 ## Running the pipeline
 
-Use one terminal per component, all with the virtual environment activated. The detection service needs a trained, active model (see [Training the detection model](#training-the-detection-model)).
+Use one terminal per component, all with the virtual environment activated, started in this order. The detection service needs a trained, active model (see [Training the detection model](#training-the-detection-model)).
 
-**Ingestion (Kafka → Elasticsearch):**
-```powershell
-python -m backend.ingestion.consumer
-```
+| # | Component | Command |
+|---|---|---|
+| 1 | API (REST + WebSocket) | `uvicorn backend.api.app.main:app --reload --reload-dir backend/api --port 8000` |
+| 2 | Ingestion (Kafka → Elasticsearch) | `python -m backend.ingestion.consumer` |
+| 3 | Detection (Kafka → PostgreSQL + anomalies.detected) | `python -m backend.detection.service` |
+| 4 | Alerting (anomalies → alerts → Telegram) | `python -m backend.alerting.service` |
+| 5 | Live feed in a terminal (optional) | `python scripts/watch_live.py` |
+| 6 | Traffic | see below |
 
-**Detection (Kafka → PostgreSQL + anomalies.detected):**
-```powershell
-python -m backend.detection.service
-```
-Each closed minute is printed with log counts per service; anomalies are shown with severity and reasons, e.g.
-`! payment-service CRITICAL (score 0.84): error rate 42.2%`.
-
-**API (REST + WebSocket):**
-```powershell
-uvicorn backend.api.app.main:app --reload --reload-dir backend/api --port 8000
-```
-Interactive documentation: <http://localhost:8000/docs>. Watch the live feed in a terminal:
-```powershell
-python scripts/watch_live.py
-```
+Start the alerting service before the traffic: a new alerting consumer group starts at the end of the topic and only sees anomalies from after its start.
 
 **Send logs:**
 ```powershell
@@ -113,6 +107,8 @@ python -m backend.log_generator.generator --kafka --scenario error_burst --warmu
 # All five fault scenarios (about 41 minutes)
 python -m backend.log_generator.generator --kafka --scenario all
 ```
+
+Interactive API documentation: <http://localhost:8000/docs>.
 
 **Check detection against the ground truth** (the generator prints the ground-truth file name):
 ```powershell
@@ -133,8 +129,31 @@ python scripts/check_detection.py data/ground_truth/<run-id>.jsonl
 | `python scripts/pipeline_latency.py --minutes 3` | Measure pipeline latency after a live run |
 | `python scripts/check_detection.py <gt file>` | Compare stored anomalies with ground truth |
 | `python scripts/watch_live.py` | Print the API's live feed |
+| `python scripts/telegram_setup.py [--send]` | Find your Telegram chat id / send a test message |
 | `python experiments/replay_windows.py <file> --ground-truth <gt file>` | Replay a log file through windowing and features (no Kafka) |
 | `python -m backend.detection.service --idle-exit 30 --group <name> --allow-future` | Replay what is in Kafka with a fresh consumer group (fast-mode runs need `--allow-future`) |
+
+## Alerts and Telegram notifications
+
+The alerting service turns anomalies into alerts:
+
+- Anomalies of one service within **5 minutes** of each other form **one alert** (severity = highest seen).
+- **LOW** anomalies never open an alert on their own.
+- An alert without new anomalies for **5 minutes** is **resolved** automatically; operators can also acknowledge or resolve alerts via `PATCH /api/v1/alerts/{id}`.
+- **Telegram** gets one message when an alert reaches **HIGH**, one if it **escalates to CRITICAL**, and one when a notified alert is **resolved** — never one per anomaly.
+
+**Telegram setup (optional, one-time):**
+1. In Telegram, open **@BotFather** (verified), send `/newbot`, choose a name and a username ending in `bot`, and copy the token.
+2. Open your new bot and send it any message.
+3. Add to `.env` (never commit this file; `git check-ignore .env` must print `.env`):
+   ```
+   TELEGRAM_BOT_TOKEN=<your token>
+   TELEGRAM_CHAT_ID=
+   ```
+4. `python scripts/telegram_setup.py` prints your chat id; put it after `TELEGRAM_CHAT_ID=` and save.
+5. `python scripts/telegram_setup.py --send` sends a test message.
+
+Without token and chat id the alerting service runs normally and only prints what it would have sent.
 
 ## Backend API
 
@@ -150,11 +169,12 @@ Base URL `http://localhost:8000/api/v1` — full contract in [api-contracts.md](
 | `GET /alerts`, `GET /alerts/{id}`, `PATCH /alerts/{id}` | Alerts; acknowledge or resolve |
 | `GET /stats/summary`, `GET /stats/timeseries` | Dashboard numbers and chart data |
 | `GET /models`, `GET /models/active` | Model registry |
-| `WS /ws/live` | Pushes `anomaly.created`, `alert.updated` and `ping` |
+| `WS /ws/live` | Pushes `anomaly.created`, `alert.created`, `alert.updated` and `ping` |
 
 Examples:
 ```
 http://localhost:8000/api/v1/anomalies?severity=HIGH,CRITICAL
+http://localhost:8000/api/v1/alerts?status=OPEN
 http://localhost:8000/api/v1/logs?level=ERROR&q=timeout&size=5
 http://localhost:8000/api/v1/stats/timeseries?metric=error_rate&interval=1m&service=payment-service
 ```
@@ -190,7 +210,7 @@ Models were compared on two public benchmark datasets from [LogHub](https://gith
 
 - **RQ1:** on stable, repetitive logs (HDFS) PCA and One-Class SVM nearly match a lookup table; on drifting logs (BGL: 74% of normal test windows contain message types unseen in training, caused by a monitoring change on 15 Nov 2005) every novelty-based method degrades.
 - **RQ2:** the best feature representation depends on the data — log-scaled counts help on bursty BGL and hurt on HDFS; retraining on one more month did not counter BGL's step-change drift.
-- **Live system (Phase 6):** global PCA with log counts was chosen from six configurations. Model `live-pca 1.1.0`: all injected incidents detected, about 33 s after a fault starts in a real-time run; 0.34% false-alarm windows on a fault-free hour, graded LOW.
+- **Live system (Phases 6–8):** global PCA with log counts was chosen from six configurations. Model `live-pca 1.1.0`: all injected incidents detected, about 33 s after a fault starts in a real-time run; 0.34% false-alarm windows on a fault-free hour, graded LOW. In a live error-burst run, 7 anomalies became 2 alerts and 5 Telegram messages (start, escalation, resolution).
 
 Details: [research plan and results](docs/research/research-plan.md), [detection design](docs/design/detection-design.md), result files in `experiments/results/`.
 
@@ -211,10 +231,10 @@ Details: [research plan and results](docs/research/research-plan.md), [detection
 ```powershell
 pytest                    # all tests (integration tests are skipped if the stack is down)
 pytest tests/unit         # unit tests only, no Docker needed
-pytest -k api             # API tests only
+pytest -k "api or alerting"   # API and alerting tests
 ```
 
-Integration test files end in `_integration.py` or live in `tests/integration/`. Integration tests create their own data (dated 2001) and remove it afterwards.
+Integration test files end in `_integration.py` or live in `tests/integration/`. Integration tests create their own data (dated 2001) and remove it afterwards. Note: the alerting lifecycle test resolves every quiet open alert in the database, as the service would.
 
 ## Service ports
 
@@ -233,7 +253,9 @@ backend/
   ingestion/      Kafka consumer, validation, dead-letter, Elasticsearch sink
   detection/      Drain parsing, windowing, features, models, severity, training,
                   model packages and registry, live detection service
+  alerting/       Grouping anomalies into alerts, auto-resolve, Telegram notifications
   api/            FastAPI application: REST endpoints and the /ws/live feed
+  common/         Shared helpers (Kafka topic creation)
 frontend/         React + TypeScript dashboard (Phase 9)
 infrastructure/   Docker Compose, database schema, monitoring config
 data/             Datasets and ground truth (generated, not committed)
@@ -249,7 +271,7 @@ tests/            Unit and integration tests
 | Document | Contents |
 |---|---|
 | [System architecture](docs/architecture/system-architecture.md) | Components, data flow, design decisions, evaluation |
-| [Data contracts](docs/design/contracts.md) | Log schema, Kafka topics, message formats |
+| [Data contracts](docs/design/contracts.md) | Log schema, Kafka topics, message formats, alert lifecycle |
 | [Database design](docs/design/database-design.md) | PostgreSQL tables, relationships, indexes |
 | [Elasticsearch design](docs/design/elasticsearch-design.md) | Index naming, template, mappings, idempotency |
 | [Detection design](docs/design/detection-design.md) | Windows, watermark, features, model, severity, publishing — each decision with its evidence |
@@ -269,8 +291,8 @@ tests/            Unit and integration tests
 | 5 | ML research on benchmark datasets (HDFS, BGL) | ✅ Done |
 | 6 | Real-time detection service | ✅ Done |
 | 7 | Backend API (REST + live WebSocket feed) | ✅ Done |
-| 8 | Alerting | ⏳ Next |
-| 9 | React dashboard | Pending |
+| 8 | Alerting (grouping, auto-resolve, Telegram) | ✅ Done |
+| 9 | React dashboard | ⏳ Next |
 | 10 | Integration, live evaluation, performance testing | Pending |
 | 11 | Documentation and final report | Pending |
 
@@ -290,8 +312,11 @@ tests/            Unit and integration tests
 | Detection skips events "more than 5 min in the future" | Expected for invalid timestamps. For replays of `--fast` runs (timestamps in the future by design) start the service with `--allow-future` |
 | `check_detection.py` shows `0/0` windows for a fault | The run was not finished or the detection service was not running during it |
 | API shows nothing for old data | List endpoints default to the last hour; add `from` (and `to`), e.g. `?from=2026-11-13T00:00:00Z` |
-| `watch_live.py` cannot connect | Start the API first (uvicorn command above) |
+| `watch_live.py` cannot connect / says "closed by the server" | Start (or restart) the API first |
 | API restarts when editing other code | Start uvicorn with `--reload-dir backend/api` |
+| Alerting says "Telegram: off" | `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` must both be set in `.env` (and the file saved) |
+| `telegram_setup.py` finds no messages | Send your bot a new message, then run it again within a few minutes |
+| No alert appears for anomalies | The alerting service must be running before the anomalies happen; LOW anomalies never open alerts |
 
 ## License
 

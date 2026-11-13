@@ -1,5 +1,5 @@
 """
-Alerting rules that do not need a database (unit-tested): severity order, escalation, titles.
+Alerting rules that do not need a database (unit-tested): severity order, escalation, titles, notifications.
 """
 from __future__ import annotations
 
@@ -35,3 +35,20 @@ def title_for(service: str, reasons: list[str], rule: str | None = None) -> str:
     else:
         title = f"Unusual log pattern in {service}"
     return title[:200]
+
+
+def notification_kind(result: str, severity: str, previous_severity: str | None, notified: bool,
+                      min_severity: str = "HIGH") -> str | None:
+    """
+    Which notification (if any) a created/updated alert needs:
+      "new"       the alert reached min_severity and nobody has been told yet
+      "escalated" an already-notified alert just became CRITICAL
+      None        nothing to send (below min_severity, or a repeat at the same severity)
+    """
+    if result not in ("created", "updated") or rank(severity) < rank(min_severity):
+        return None
+    if not notified:
+        return "new"
+    if severity == "CRITICAL" and previous_severity is not None and previous_severity != "CRITICAL":
+        return "escalated"
+    return None

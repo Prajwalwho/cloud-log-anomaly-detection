@@ -1,5 +1,5 @@
 """
-Grouping anomalies into alerts in PostgreSQL (one transaction per anomaly).
+Alerts in PostgreSQL: grouping anomalies (one transaction per anomaly), notification bookkeeping, auto-resolve.
 
 For an anomaly from anomalies.detected:
 - already linked to an alert            -> "duplicate" (Kafka delivers at least once; nothing changes)
@@ -9,6 +9,8 @@ For an anomaly from anomalies.detected:
 - otherwise, severity >= min_severity   -> open a new alert
 - otherwise                             -> "below_threshold" (no alert)
 The anomaly is linked to its alert (anomalies.alert_id). Rows are locked, so concurrent work stays consistent.
+
+Auto-resolve: OPEN/ACKNOWLEDGED alerts whose last anomaly is older than resolve_after_s become RESOLVED.
 """
 from __future__ import annotations
 
@@ -55,6 +57,7 @@ def alert_item(row: dict) -> dict:
 class Outcome:
     result: str                         # created | updated | duplicate | unknown | below_threshold
     alert: dict | None = None
+    previous_severity: str | None = None    # severity before this anomaly (updates only)
 
     @property
     def event_type(self) -> str | None:
@@ -67,6 +70,9 @@ class AlertStore:
         self.gap = timedelta(seconds=gap_s)
         self.min_severity = min_severity
 
+    def _connect(self) -> psycopg.Connection:
+        return psycopg.connect(self.conninfo, row_factory=dict_row)
+
     def process(self, message: dict) -> Outcome:
         anomaly_id = message["anomaly_id"]
         severity = message["severity"]
@@ -74,8 +80,9 @@ class AlertStore:
         summary = message.get("summary") or {}
         reasons = list(summary.get("reasons") or [])
         text = "; ".join(reasons) or None
+        previous = None
 
-        with psycopg.connect(self.conninfo, row_factory=dict_row) as conn, conn.transaction():
+        with self._connect() as conn, conn.transaction():
             anomaly = conn.execute("SELECT service_id, alert_id FROM anomalies WHERE id = %s FOR UPDATE",
                                    (anomaly_id,)).fetchone()
             if anomaly is None:
@@ -96,6 +103,7 @@ class AlertStore:
             ).fetchone()
 
             if current is not None:
+                previous = current["severity"]
                 conn.execute(
                     """
                     UPDATE alerts
@@ -105,7 +113,7 @@ class AlertStore:
                         message = %(message)s
                     WHERE id = %(id)s
                     """,
-                    {"seen": detected_at, "severity": max_severity(current["severity"], severity),
+                    {"seen": detected_at, "severity": max_severity(previous, severity),
                      "message": text, "id": current["id"]},
                 )
                 alert_id, result = current["id"], "updated"
@@ -126,4 +134,22 @@ class AlertStore:
 
             conn.execute("UPDATE anomalies SET alert_id = %s WHERE id = %s", (alert_id, anomaly_id))
             row = conn.execute(ALERT_SELECT, {"id": alert_id}).fetchone()
-        return Outcome(result, alert_item(row))
+        return Outcome(result, alert_item(row), previous)
+
+    def mark_notified(self, alert_id: str) -> dict:
+        with self._connect() as conn, conn.transaction():
+            conn.execute("UPDATE alerts SET notification_sent = TRUE, notified_at = now() WHERE id = %s", (alert_id,))
+            return alert_item(conn.execute(ALERT_SELECT, {"id": alert_id}).fetchone())
+
+    def resolve_quiet(self, resolve_after_s: float) -> list[dict]:
+        """Resolve OPEN/ACKNOWLEDGED alerts without anomalies for resolve_after_s; returns the resolved alerts."""
+        with self._connect() as conn, conn.transaction():
+            rows = conn.execute(
+                """
+                UPDATE alerts SET status = 'RESOLVED', resolved_at = now()
+                WHERE status IN ('OPEN', 'ACKNOWLEDGED') AND last_seen_at < now() - make_interval(secs => %s)
+                RETURNING id
+                """,
+                (resolve_after_s,),
+            ).fetchall()
+            return [alert_item(conn.execute(ALERT_SELECT, {"id": r["id"]}).fetchone()) for r in rows]

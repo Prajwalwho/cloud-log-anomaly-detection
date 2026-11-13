@@ -14,6 +14,7 @@ import sys
 from datetime import datetime
 
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 
 def describe(event: dict) -> str:
@@ -49,6 +50,9 @@ def main() -> int:
         asyncio.run(watch(args.url, args.pings))
     except KeyboardInterrupt:
         pass
+    except ConnectionClosed as exc:
+        code = exc.rcvd.code if exc.rcvd else "none"
+        print(f"Connection closed by the server (code {code}); the API was stopped or restarted.")
     except OSError as exc:
         print(f"[FAIL] cannot connect to {args.url} ({exc}). Is the API running?")
         return 1
