@@ -1,35 +1,42 @@
 """
-Publishes new anomalies to Kafka topic anomalies.detected (contracts.md), keyed by service.
+Publishes new anomalies to Kafka topic anomalies.detected (contracts.md §5.3), keyed by service.
 
 PostgreSQL is the source of truth: anomalies are published only after they are stored, and a failed publish
 is counted and reported, not retried forever (the API reads anomalies from the database). The Kafka message
 lets alerting and the live dashboard react immediately.
+
+Message format follows contracts.md §5.3 exactly: flat model_name / model_version (plus the optional
+model_id), and UTC timestamps with millisecond precision. (Day 25 sent a nested "model" object and
+microsecond timestamps, which violated the contract; fixed on Day 27.)
 """
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from confluent_kafka import Producer
 
 SCHEMA_VERSION = "1.0"
 
 
-def _iso(value: datetime) -> str:
-    return value.isoformat().replace("+00:00", "Z")
+def iso_ms(value: datetime) -> str:
+    """UTC ISO 8601 with exactly three decimals and a Z suffix: 2026-11-08T10:15:30.123Z."""
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def anomaly_message(anomaly: dict, model: dict) -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "anomaly_id": anomaly["anomaly_id"],
-        "detected_at": _iso(anomaly["detected_at"]),
+        "detected_at": iso_ms(anomaly["detected_at"]),
         "service": anomaly["service"],
-        "window_start": _iso(anomaly["window_start"]),
-        "window_end": _iso(anomaly["window_end"]),
+        "window_start": iso_ms(anomaly["window_start"]),
+        "window_end": iso_ms(anomaly["window_end"]),
         "anomaly_score": round(float(anomaly["anomaly_score"]), 6),
         "severity": anomaly["severity"],
-        "model": {"id": model["id"], "name": model["name"], "version": model["version"]},
+        "model_name": model["name"],
+        "model_version": model["version"],
+        "model_id": model["id"],
         "summary": anomaly["summary"],
         "sample_event_ids": anomaly["sample_event_ids"],
     }

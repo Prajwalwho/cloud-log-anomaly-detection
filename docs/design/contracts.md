@@ -1,8 +1,8 @@
 # Data Contracts
 ## Cloud Log Anomaly Detection for Proactive Fault Management
 
-Version: 1.0
-Status: Draft — will change as implementation progresses.
+Document version: 1.1 (message schema_version stays "1.0": only optional fields were added, see Section 7)
+Status: Implemented for logs, dead-letter, anomalies and ground truth.
 
 This document defines the formats of all data exchanged between system components. Every service must follow these contracts.
 
@@ -16,7 +16,7 @@ This document defines the formats of all data exchanged between system component
 | Field naming | snake_case |
 | Timestamps | ISO 8601, UTC, millisecond precision (`2026-11-08T10:15:30.123Z`) |
 | IDs | UUID v4 strings |
-| Anomaly scores | Normalized to 0.0–1.0; higher means more anomalous |
+| Anomaly scores | Normalized to 0.0–1.0; higher means more anomalous; 0.5 = model threshold |
 | Schema version | Every message carries `schema_version` |
 
 All components store and process time in UTC. Conversion to local time happens only in the dashboard.
@@ -82,9 +82,9 @@ The canonical format of every log event in the system.
 }
 ```
 
-### 2.4 Validation rules (ingestion service)
+### 2.4 Validation rules
 
-A message is rejected and sent to `logs.deadletter` if:
+The ingestion service rejects a message and sends it to `logs.deadletter` if:
 
 1. It is not valid JSON.
 2. Any required field is missing or has the wrong type.
@@ -93,9 +93,13 @@ A message is rejected and sent to `logs.deadletter` if:
 5. `status_code` is outside 100–599, or `latency_ms` is negative.
 6. It contains top-level fields not defined in this contract (extra data belongs in `metadata`).
 
+The detection service reads `logs.raw` independently and applies rules 1, 2 (for the fields it uses) and 4:
+such messages are counted and skipped, so an invalid timestamp can never move its event-time watermark.
+(Fast-mode test replays, whose timestamps are deliberately in the future, use `--allow-future`.)
+
 ### 2.5 Ground truth is never part of the log
 
-Log events do **not** carry anomaly labels. When the log generator injects a fault, it writes the ground truth to a separate file (Section 5). This prevents label leakage: the detector can never see the answer it is being evaluated on.
+Log events do **not** carry anomaly labels. When the log generator injects a fault, it writes the ground truth to a separate file (Section 5.4). This prevents label leakage: the detector can never see the answer it is being evaluated on.
 
 ---
 
@@ -111,7 +115,8 @@ Log events do **not** carry anomaly labels. When the log generator injects a fau
 
 Hosts: `node-1`, `node-2`, `node-3`.
 
-The list may be extended. Detection must not assume a fixed set of services.
+The list may be extended. Detection must not assume a fixed set of services: services not in its configuration are
+added when their first log arrives (they have no baseline until a model is trained with them).
 
 ---
 
@@ -128,6 +133,9 @@ The setup has a single broker, so replication factor is 1 for all topics. This i
 ### 4.1 Why `service` is the message key
 
 Kafka keeps message order only within a partition. Keying by `service` sends all logs of one service to the same partition, so the detection service receives each service's logs in order. This is needed to build correct time windows.
+
+Partitions are not consumed at the same pace, especially when catching up on a backlog. The detection service
+therefore closes windows using a per-partition watermark (detection-design.md, Section 2).
 
 ### 4.2 Consumer groups
 
@@ -159,6 +167,8 @@ Exactly the log event schema in Section 2.
 
 ### 5.3 `anomalies.detected`
 
+Published by the detection service after the anomaly is stored in PostgreSQL (PostgreSQL is the source of truth).
+
 ```json
 {
   "schema_version": "1.0",
@@ -167,15 +177,22 @@ Exactly the log event schema in Section 2.
   "service": "payment-service",
   "window_start": "2026-11-08T10:15:00.000Z",
   "window_end": "2026-11-08T10:16:00.000Z",
-  "anomaly_score": 0.91,
-  "severity": "HIGH",
-  "model_name": "isolation_forest",
-  "model_version": "1.0.0",
+  "anomaly_score": 0.84,
+  "severity": "CRITICAL",
+  "model_name": "live-pca",
+  "model_version": "1.1.0",
+  "model_id": 5,
   "summary": {
-    "log_count": 1840,
-    "error_rate": 0.37,
-    "avg_latency_ms": 2140.5,
-    "new_templates": 2
+    "log_count": 282,
+    "error_rate": 0.422,
+    "warn_rate": 0.004,
+    "avg_latency_ms": 137.4,
+    "p95_latency_ms": 261.4,
+    "new_templates": 0,
+    "raw_score": 244.5,
+    "threshold": 9.9,
+    "rule": null,
+    "reasons": ["error rate 42.2%"]
   },
   "sample_event_ids": [
     "7d1e5a90-3c2f-4b8e-a6d4-91f0b2c3e5a7"
@@ -186,10 +203,27 @@ Exactly the log event schema in Section 2.
 | Field | Description |
 |---|---|
 | `window_start`, `window_end` | The 60-second window that was scored |
-| `anomaly_score` | Normalized 0.0–1.0 model output |
-| `severity` | One of `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (rules defined in Phase 6) |
-| `summary` | Key window statistics, so the dashboard can explain the anomaly |
-| `sample_event_ids` | Up to 10 representative log IDs; full logs are fetched from Elasticsearch |
+| `anomaly_score` | Normalized 0.0–1.0 model output; 0.5 = threshold (log-ratio normalisation, detection-design.md §5) |
+| `severity` | One of `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`; graded by rules (detection-design.md §5) |
+| `model_name`, `model_version` | The registered model that produced the anomaly |
+| `model_id` | Optional (added in document version 1.1): id in `model_registry` |
+| `summary` | Window statistics so the dashboard can explain the anomaly (table below) |
+| `sample_event_ids` | Up to 10 log IDs, errors first, then warnings, then others; full logs are fetched from Elasticsearch |
+
+`summary` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `log_count` | integer | Log lines in the window (0 for a silent service) |
+| `error_rate` | number | ERROR/FATAL lines / log_count (0 if no logs) |
+| `warn_rate` | number | Optional (1.1): WARN lines / log_count |
+| `avg_latency_ms` | number or null | Mean latency of lines with latency |
+| `p95_latency_ms` | number or null | Optional (1.1): 95th percentile latency |
+| `new_templates` | integer | Distinct message types not seen in training |
+| `raw_score` | number | Optional (1.1): model score before normalisation |
+| `threshold` | number | Optional (1.1): model threshold for raw_score |
+| `rule` | string or null | Optional (1.1): `"no_logs"` if flagged by the no-logs rule |
+| `reasons` | array of strings | Optional (1.1): human-readable reasons for the severity, strongest first |
 
 ### 5.4 Ground-truth record (file, not Kafka)
 
@@ -214,3 +248,10 @@ During evaluation, a detection window counts as a true positive if it overlaps a
 
 - Adding an optional field: allowed; update this document.
 - Removing or renaming a field, or changing a type: increment `schema_version` and update every component.
+
+## 7. Change Log
+
+| Document version | Change |
+|---|---|
+| 1.0 | Initial contracts (Day 1) |
+| 1.1 | `anomalies.detected`: optional `model_id`; summary fields `warn_rate`, `p95_latency_ms`, `raw_score`, `threshold`, `rule`, `reasons`. Detection-side validation rules (§2.4). Day 25 publisher sent a nested `model` object and non-millisecond timestamps, which violated §5.3; fixed in code (Day 27) |
