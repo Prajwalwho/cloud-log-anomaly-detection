@@ -1,16 +1,15 @@
 """
 Real-time feed behind /ws/live (api-contracts.md §4).
 
-- AnomalyListener (a background thread) reads Kafka topic anomalies.detected and converts each message from the
-  Kafka format (contracts.md §5.3: flat model_name/model_version/model_id) into the API's anomaly item
-  (api-contracts.md §3.5: nested model, alert_id and feedback null).
+- FeedListener (a background thread) reads Kafka topics and converts each message into a live event:
+    anomalies.detected (contracts.md §5.3) -> {"type": "anomaly.created", "data": anomaly item (api-contracts §3.5)}
+    alerts.events      (Phase 8)          -> {"type": "alert.created" | "alert.updated", "data": alert item (§3.8)}
 - LiveHub fans every event out to all connected browsers, each with its own bounded queue.
 
 Decisions (Day 30):
-- Every API instance must see EVERY anomaly. A consumer group divides partitions between its members, which is
+- Every API instance must see EVERY event. A consumer group divides partitions between its members, which is
   right for sharing work but wrong for broadcasting, so the listener assigns itself all partitions directly (no
-  group balancing, no committed offsets) at the current end of the topic. The live feed shows what happens from
-  now on; history comes from GET /anomalies (the dashboard reloads it after reconnecting).
+  group balancing, no committed offsets) at the current end of each topic. History comes from the REST endpoints.
 - A browser that stops reading must not block the others: when its queue is full, only that connection is closed.
 - The API starts even when Kafka is down: the listener retries in the background.
 """
@@ -19,10 +18,14 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+from collections.abc import Callable
 
 from confluent_kafka import Consumer, TopicPartition
 
+from backend.common.kafka_topics import ensure_topics
+
 CLOSE = None          # queue marker: close this connection (client too slow)
+ALERT_EVENT_TYPES = {"alert.created", "alert.updated"}
 
 
 class LiveHub:
@@ -83,16 +86,27 @@ def to_anomaly_item(message: dict) -> dict:
     }
 
 
-class AnomalyListener(threading.Thread):
-    def __init__(self, hub: LiveHub, bootstrap_servers: str, topic: str, group_id: str,
-                 retry_s: float = 5.0) -> None:
-        super().__init__(name="anomaly-listener", daemon=True)
+def anomaly_event(message: dict) -> dict:
+    return {"type": "anomaly.created", "data": to_anomaly_item(message)}
+
+
+def alert_event(message: dict) -> dict:
+    """alerts.events message -> live event; the alert item is already in the API format."""
+    if message.get("type") not in ALERT_EVENT_TYPES or not isinstance(message.get("alert"), dict):
+        raise ValueError("not an alert event")
+    return {"type": message["type"], "data": message["alert"]}
+
+
+class FeedListener(threading.Thread):
+    def __init__(self, hub: LiveHub, bootstrap_servers: str, converters: dict[str, Callable[[dict], dict]],
+                 group_id: str, retry_s: float = 5.0) -> None:
+        super().__init__(name="feed-listener", daemon=True)
         self.hub = hub
         self.bootstrap_servers = bootstrap_servers
-        self.topic = topic
+        self.converters = converters              # topic -> message-to-event function
         self.group_id = group_id
         self.retry_s = retry_s
-        self.ready = threading.Event()            # set once all partitions are assigned
+        self.ready = threading.Event()            # set once all partitions of all topics are assigned
         self._stop_event = threading.Event()      # (Thread already has a private _stop)
         self.received = 0
         self.invalid = 0
@@ -102,14 +116,15 @@ class AnomalyListener(threading.Thread):
 
     def _assign_at_end(self, consumer: Consumer) -> bool:
         try:
-            metadata = consumer.list_topics(self.topic, timeout=5)
-            topic = metadata.topics.get(self.topic)
-            if topic is None or topic.error is not None or not topic.partitions:
-                return False
+            ensure_topics(self.bootstrap_servers, {topic: 1 for topic in self.converters}, timeout_s=5)
             assignment = []
-            for partition in topic.partitions:
-                _low, high = consumer.get_watermark_offsets(TopicPartition(self.topic, partition), timeout=5)
-                assignment.append(TopicPartition(self.topic, partition, high))   # explicit end offset
+            for name in self.converters:
+                topic = consumer.list_topics(name, timeout=5).topics.get(name)
+                if topic is None or topic.error is not None or not topic.partitions:
+                    return False
+                for partition in topic.partitions:
+                    _low, high = consumer.get_watermark_offsets(TopicPartition(name, partition), timeout=5)
+                    assignment.append(TopicPartition(name, partition, high))   # explicit end offset
             consumer.assign(assignment)
             return True
         except Exception:
@@ -133,11 +148,11 @@ class AnomalyListener(threading.Thread):
                 if message is None or message.error():
                     continue
                 try:
-                    item = to_anomaly_item(json.loads(message.value()))
+                    event = self.converters[message.topic()](json.loads(message.value()))
                 except Exception:
                     self.invalid += 1
                     continue
                 self.received += 1
-                self.hub.publish_threadsafe({"type": "anomaly.created", "data": item})
+                self.hub.publish_threadsafe(event)
         finally:
             consumer.close()

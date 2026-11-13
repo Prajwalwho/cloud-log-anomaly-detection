@@ -2,11 +2,12 @@
 import asyncio
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.api.app.config import ApiSettings
 from backend.api.app.main import create_app
-from backend.api.app.realtime import CLOSE, LiveHub, to_anomaly_item
+from backend.api.app.realtime import CLOSE, LiveHub, alert_event, to_anomaly_item
 
 BASE = dict(postgres_port=1, elasticsearch_url="http://localhost:1", kafka_bootstrap_servers="localhost:1",
             dependency_timeout_s=1.0, live_kafka_enabled=False)
@@ -61,3 +62,11 @@ def test_kafka_message_becomes_anomaly_item():
     assert item["id"] == MESSAGE["anomaly_id"]
     assert item["model"] == {"id": 5, "name": "live-pca", "version": "1.1.0"}
     assert item["alert_id"] is None and item["feedback"] is None
+
+
+def test_alert_message_becomes_live_event():
+    alert = {"id": "a1", "service": "payment-service", "status": "OPEN"}
+    assert alert_event({"schema_version": "1.0", "type": "alert.created", "anomaly_id": "x", "alert": alert}) == \
+        {"type": "alert.created", "data": alert}
+    with pytest.raises(ValueError):
+        alert_event({"type": "something.else", "alert": alert})

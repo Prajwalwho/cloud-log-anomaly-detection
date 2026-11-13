@@ -30,7 +30,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool, PoolTimeout
 
 from .config import ApiSettings
-from .realtime import AnomalyListener, LiveHub
+from .realtime import FeedListener, LiveHub, alert_event, anomaly_event
 from .routers import alerts, anomalies, health, live, logs, models, services, stats
 
 API_PREFIX = "/api/v1"
@@ -54,8 +54,11 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         app.state.hub = LiveHub(asyncio.get_running_loop(), settings.live_queue_size)
         app.state.listener = None
         if settings.live_kafka_enabled:
-            app.state.listener = AnomalyListener(app.state.hub, settings.kafka_bootstrap_servers,
-                                                 settings.kafka_topic_anomalies, settings.api_group_id)
+            app.state.listener = FeedListener(
+                app.state.hub, settings.kafka_bootstrap_servers,
+                {settings.kafka_topic_anomalies: anomaly_event, settings.kafka_topic_alerts: alert_event},
+                settings.api_group_id,
+            )
             app.state.listener.start()
 
         async def ping() -> None:

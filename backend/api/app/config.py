@@ -22,6 +22,7 @@ class ApiSettings(BaseSettings):
     # Kafka
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_topic_anomalies: str = "anomalies.detected"
+    kafka_topic_alerts: str = "alerts.events"
     api_group_id: str = "api-group"
 
     # Live feed (/ws/live)
