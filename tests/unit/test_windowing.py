@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from backend.detection.windowing import WindowAggregator
+from backend.detection.windowing import MAX_SAMPLES, WindowAggregator
 
 T0 = datetime(2026, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
 
@@ -67,3 +67,23 @@ def test_gap_produces_empty_windows_for_every_minute():
 def test_naive_timestamps_are_rejected():
     with pytest.raises(ValueError):
         WindowAggregator(60).add("a", datetime(2026, 1, 1), "INFO", 1)
+
+
+def test_sample_event_ids_prefer_errors_then_warnings():
+    agg = WindowAggregator(60)
+    for i in range(15):
+        agg.add("a", at(1), "INFO", 1, event_id=f"info-{i}")
+    agg.add("a", at(2), "WARN", 2, event_id="warn-0")
+    agg.add("a", at(3), "ERROR", 3, event_id="error-0")
+    samples = agg.close_until(at(60))[0].sample_event_ids
+    assert samples[:2] == ["error-0", "warn-0"]
+    assert len(samples) == MAX_SAMPLES
+
+
+def test_closed_before_tracks_progress():
+    agg = WindowAggregator(60)
+    assert agg.closed_before is None
+    agg.add("a", at(5), "INFO", 1)
+    assert agg.closed_before == at(0).timestamp()
+    agg.close_until(at(125))
+    assert agg.closed_before == at(120).timestamp()

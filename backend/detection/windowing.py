@@ -11,6 +11,9 @@ Empty windows matter: a crashed service is visible only as a window with zero lo
 Events that arrive after their window has been closed are counted as late and dropped, so they never
 end up in the wrong window. The caller chooses the watermark, typically "latest event time minus a
 grace period" (replay) or "current time minus a grace period" (live).
+
+Each window keeps up to MAX_SAMPLES event ids, errors first, then warnings, then others, so an anomaly
+can point to its most relevant log lines.
 """
 from __future__ import annotations
 
@@ -22,6 +25,7 @@ from datetime import datetime, timezone
 
 ERROR_LEVELS = frozenset({"ERROR", "FATAL"})
 WARN_LEVELS = frozenset({"WARN"})
+MAX_SAMPLES = 10
 
 
 @dataclass
@@ -35,6 +39,9 @@ class WindowStats:
     warn_count: int = 0
     template_counts: Counter = field(default_factory=Counter)
     latencies: list[float] = field(default_factory=list)
+    error_samples: list[str] = field(default_factory=list)
+    warn_samples: list[str] = field(default_factory=list)
+    other_samples: list[str] = field(default_factory=list)
 
     @property
     def start(self) -> datetime:
@@ -44,12 +51,22 @@ class WindowStats:
     def end(self) -> datetime:
         return datetime.fromtimestamp(self.start_epoch + self.window_s, tz=timezone.utc)
 
-    def add(self, level: str, template_id: int, latency_ms: float | None) -> None:
+    @property
+    def sample_event_ids(self) -> list[str]:
+        return (self.error_samples + self.warn_samples + self.other_samples)[:MAX_SAMPLES]
+
+    def add(self, level: str, template_id: int, latency_ms: float | None, event_id: str | None = None) -> None:
         self.log_count += 1
         if level in ERROR_LEVELS:
             self.error_count += 1
+            samples = self.error_samples
         elif level in WARN_LEVELS:
             self.warn_count += 1
+            samples = self.warn_samples
+        else:
+            samples = self.other_samples
+        if event_id is not None and len(samples) < MAX_SAMPLES:
+            samples.append(event_id)
         self.template_counts[template_id] += 1
         if latency_ms is not None:
             self.latencies.append(float(latency_ms))
@@ -65,13 +82,18 @@ class WindowAggregator:
         self._next_close: float | None = None    # start of the oldest window not yet closed
         self.late_events = 0
 
+    @property
+    def closed_before(self) -> float | None:
+        """Epoch seconds: every window starting before this time has been closed."""
+        return self._next_close
+
     def window_start(self, timestamp: datetime) -> float:
         if timestamp.tzinfo is None:
             raise ValueError("timestamp must be timezone-aware (UTC)")
         return math.floor(timestamp.timestamp() / self.window_s) * self.window_s
 
     def add(self, service: str, timestamp: datetime, level: str, template_id: int,
-            latency_ms: float | None = None) -> bool:
+            latency_ms: float | None = None, event_id: str | None = None) -> bool:
         """Add one event. Returns False (and counts it as late) if its window is already closed."""
         start = self.window_start(timestamp)
         if self._next_close is None:
@@ -84,7 +106,7 @@ class WindowAggregator:
         stats = self._open.get(key)
         if stats is None:
             stats = self._open[key] = WindowStats(service, start, self.window_s)
-        stats.add(level, template_id, latency_ms)
+        stats.add(level, template_id, latency_ms, event_id)
         return True
 
     def close_until(self, watermark: datetime) -> list[WindowStats]:
