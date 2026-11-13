@@ -2,7 +2,8 @@
 Live detection service (Phase 6, detection-design.md).
 
     logs.raw (own consumer group) -> Drain (model's saved parser state) -> 60-s windows per service
-    -> active model (LiveDetector) -> severity -> PostgreSQL (detection_windows, anomalies)
+    -> active model (LiveDetector) -> judge (flag, no-logs rule, severity, reasons)
+    -> PostgreSQL (detection_windows, anomalies) -> Kafka anomalies.detected
 
 Window closing: per-partition event-time watermark (watermark.py). A partition is "caught up" when it has
 been read up to its high-water mark (Kafka). While any partition is behind, windows close only up to the
@@ -10,12 +11,11 @@ minimum latest event time of the lagging partitions (or not at all if one has de
 all are caught up, wall-clock time is used. Windows close at watermark minus grace.
 
 Delivery: offsets are committed only for events whose windows are closed and written (OffsetTracker), so a
-restart replays the open windows instead of losing them. Storing is idempotent (store.py).
+restart replays the open windows instead of losing them. Storing is idempotent (store.py). Anomalies are
+published after they are stored; PostgreSQL is the source of truth.
 
-Special cases:
-- The first window after start-up is partial (it began before the first event was read) and is not scored.
-- If ALL known services are empty in a window, there is no traffic at all (e.g. the generator stopped): the
-  windows are stored without anomalies, not printed, and one warning is printed.
+The first window after start-up is partial (it began before the first event was read) and is not scored.
+Minutes without any traffic are stored without anomalies, not printed, and reported once.
 
 Usage (from the project root):
     python -m backend.detection.service
@@ -27,51 +27,24 @@ import argparse
 import json
 import sys
 import time
-from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 from confluent_kafka import Consumer, KafkaException, TopicPartition
 
 from .config import DetectionSettings
-from .live_model import LiveDetector
 from .offsets import OffsetTracker
 from .package import load_package
 from .pipeline import parse_timestamp
+from .publisher import AnomalyPublisher
 from .registry import active_model
-from .scoring.severity import severity_for
-from .store import DetectionStore, WindowResult
+from .scoring.judge import judge_windows
+from .store import DetectionStore
 from .watermark import PartitionWatermark
-from .windowing import WindowAggregator, WindowStats
+from .windowing import WindowAggregator
 
 SHORT = {"api-gateway": "gateway", "auth-service": "auth", "order-service": "order",
          "payment-service": "payment", "inventory-service": "inventory"}
-
-
-def score(detector: LiveDetector, windows: list[WindowStats]) -> tuple[list[WindowResult], list[datetime]]:
-    """Score closed windows; returns results and the window starts in which no service had logs."""
-    out = detector.predict(windows)
-    by_start: dict[float, list[int]] = defaultdict(list)
-    for i, w in enumerate(windows):
-        by_start[w.start_epoch].append(i)
-
-    results, idle_minutes = [], []
-    for start, indices in sorted(by_start.items()):
-        no_traffic = all(windows[i].log_count == 0 for i in indices)
-        if no_traffic:
-            idle_minutes.append(windows[indices[0]].start)
-        for i in indices:
-            w = windows[i]
-            no_logs = w.log_count == 0 and not no_traffic
-            flagged = (bool(out["is_anomaly"][i]) or no_logs) and not no_traffic
-            results.append(WindowResult(
-                window=w, summary=detector.extractor.summary(w),
-                raw_score=float(out["raw"][i]), threshold=float(out["threshold"][i]),
-                score=float(out["score"][i]), is_anomaly=flagged,
-                severity=severity_for(float(out["score"][i]), no_logs) if flagged else None,
-                rule="no_logs" if no_logs else None,
-            ))
-    return results, idle_minutes
 
 
 def caught_up_partitions(consumer: Consumer, assigned: list[TopicPartition],
@@ -121,10 +94,12 @@ def main(argv: list[str] | None = None) -> int:
     except KafkaException as exc:
         print(f"[FAIL] Kafka not reachable ({exc}). Start the stack: .\\scripts\\start.ps1 up")
         return 1
-    if settings.kafka_topic_logs not in topics:
-        print(f"[FAIL] Topic {settings.kafka_topic_logs} missing. Start the stack: .\\scripts\\start.ps1 up")
-        return 1
+    for topic in (settings.kafka_topic_logs, settings.kafka_topic_anomalies):
+        if topic not in topics:
+            print(f"[FAIL] Topic {topic} missing. Start the stack: .\\scripts\\start.ps1 up")
+            return 1
     consumer.subscribe([settings.kafka_topic_logs])
+    publisher = AnomalyPublisher(settings.kafka_bootstrap_servers, settings.kafka_topic_anomalies)
 
     aggregator = WindowAggregator(settings.window_s, services=settings.service_list)
     tracker = OffsetTracker()
@@ -137,7 +112,8 @@ def main(argv: list[str] | None = None) -> int:
     warned_idle = False
 
     print(f"Detection service: model {model['name']} {model['version']} (id {model['id']}), "
-          f"group '{group}', topic '{settings.kafka_topic_logs}'. Ctrl+C to stop.")
+          f"group '{group}', topic '{settings.kafka_topic_logs}' -> '{settings.kafka_topic_anomalies}'. "
+          f"Ctrl+C to stop.")
     try:
         while True:
             messages = consumer.consume(num_messages=500, timeout=1.0)
@@ -172,8 +148,10 @@ def main(argv: list[str] | None = None) -> int:
                 closed = aggregator.close_until(current - grace)
                 complete = [w for w in closed if w.start_epoch >= first_event]
                 if closed:
-                    results, idle_minutes = score(detector, complete) if complete else ([], [])
+                    results, idle_minutes = judge_windows(detector, complete)
                     created = store.write(results, model["id"]) if results else []
+                    if created:
+                        publisher.publish(created, model)
                     windows_stored += len(results)
                     anomalies_created += len(created)
                     offsets = tracker.committable(aggregator.closed_before)
@@ -182,10 +160,14 @@ def main(argv: list[str] | None = None) -> int:
 
                     idle_set = set(idle_minutes)
                     for start in sorted({r.window.start for r in results} - idle_set):
+                        minute = [r for r in results if r.window.start == start]
                         line = [f"{SHORT.get(r.window.service, r.window.service)} {r.window.log_count}"
-                                + (f" [{r.severity} {r.score:.2f}{' no logs' if r.rule else ''}]" if r.is_anomaly else "")
-                                for r in results if r.window.start == start]
+                                + (f" [{r.severity}]" if r.is_anomaly else "") for r in minute]
                         print(f"  {start:%H:%M} UTC  " + " | ".join(line))
+                        for r in minute:
+                            if r.is_anomaly:
+                                print(f"      ! {r.window.service} {r.severity} (score {r.score:.2f}): "
+                                      + "; ".join(r.reasons))
                     if idle_minutes and not warned_idle:
                         print(f"  [WARN] no logs from any service since {idle_minutes[0]:%H:%M} UTC "
                               f"(no traffic); windows stored without anomalies")
@@ -201,7 +183,8 @@ def main(argv: list[str] | None = None) -> int:
         consumer.close()   # open windows are not committed: they are replayed after a restart
 
     print(f"\nEvents {events:,} (invalid {invalid}, late {aggregator.late_events}); windows stored {windows_stored}; "
-          f"anomalies {anomalies_created}; events in open windows (to be replayed): {tracker.pending}")
+          f"anomalies {anomalies_created} (published {publisher.delivered}, failed {publisher.failed}); "
+          f"events in open windows (to be replayed): {tracker.pending}")
     return 0
 
 

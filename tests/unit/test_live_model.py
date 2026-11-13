@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from backend.detection.live_model import LiveDetector, normalise
+from backend.detection.live_model import LiveDetector, normalise, normalise_log_ratio
 from backend.detection.windowing import WindowStats
 
 rng = np.random.default_rng(3)
@@ -42,13 +42,34 @@ def test_normalised_score_properties(algorithm):
     assert np.all((score >= 0) & (score <= 1))
     assert np.all((score > 0.5) == result["is_anomaly"])
     order = np.argsort(result["raw"])
-    assert np.all(np.diff(score[order]) >= 0)          # monotonic in the raw score
+    assert np.all(np.diff(score[order]) >= 0)
 
 
-def test_normalise_is_half_at_threshold_and_bounded():
+def test_exp_normalise_is_half_at_threshold_and_bounded():
     s = normalise(np.array([-100.0, 2.0, 1e6]), threshold=np.array([2.0] * 3), spread=np.array([1.0] * 3))
     assert s[1] == pytest.approx(0.5)
     assert 0 <= s[0] < 0.5 < s[2] <= 1
+
+
+def test_log_ratio_keeps_strong_anomalies_apart():
+    s = normalise_log_ratio(np.array([0.0, 5.0, 10.0, 100.0, 1000.0]), threshold=np.array([10.0] * 5))
+    assert s[0] == 0.0 and s[1] == pytest.approx(0.25) and s[2] == pytest.approx(0.5)
+    assert s[3] == pytest.approx(0.75) and s[4] == pytest.approx(1 - 0.5 / 3)
+    assert s[4] < 1.0
+
+
+def test_pca_defaults_to_log_ratio_and_ocsvm_to_exp():
+    assert LiveDetector(algorithm="pca").normalisation == "log_ratio"
+    assert LiveDetector(algorithm="ocsvm").normalisation == "exp"
+    with pytest.raises(ValueError):
+        LiveDetector(algorithm="ocsvm", normalisation="log_ratio")
+
+
+def test_baselines_are_learned_per_service():
+    detector = LiveDetector().fit(normal_windows("a") + [window("b", 10) for _ in range(20)])
+    assert 90 <= detector.baselines["a"]["log_count"] <= 110
+    assert detector.baselines["b"]["log_count"] == 10
+    assert detector.baselines["a"]["p95_latency_ms"] == pytest.approx(53, abs=2)
 
 
 def test_per_service_keeps_separate_thresholds():

@@ -9,26 +9,12 @@ restart therefore never duplicates windows or anomalies.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .windowing import WindowStats
-
-
-@dataclass
-class WindowResult:
-    window: WindowStats
-    summary: dict
-    raw_score: float
-    threshold: float
-    score: float
-    is_anomaly: bool
-    severity: str | None
-    rule: str | None = None
-    extra: dict = field(default_factory=dict)
+from .scoring.judge import WindowResult
 
 
 class DetectionStore:
@@ -83,6 +69,7 @@ class DetectionStore:
                         "raw_score": r.raw_score,
                         "threshold": r.threshold,
                         "rule": r.rule,
+                        "reasons": list(r.reasons),
                     },
                     "sample_event_ids": w.sample_event_ids,
                 }
