@@ -2,7 +2,7 @@
 
 A real-time system that collects logs from cloud services, detects abnormal patterns using machine learning, and alerts administrators before problems turn into failures.
 
-> **Status:** In development. Infrastructure, log generation and ingestion are complete (Phases 0–4). Next: ML research (Phase 5). See [Roadmap](#roadmap).
+> **Status:** In development. Infrastructure, log generation, ingestion, ML research and the real-time detection service are complete (Phases 0–6). Next: Backend API (Phase 7). See [Roadmap](#roadmap).
 
 ---
 
@@ -28,8 +28,8 @@ Elasticsearch  Kafka (anomalies.detected) ──► Alerting (Telegram / email)
 
 1. The **log generator** simulates user requests through five microservices and can inject faults at known times, recording the ground truth.
 2. The **ingestion service** validates every log against the contract and stores it in Elasticsearch; invalid messages go to a dead-letter topic.
-3. The **detection service** groups logs into 60-second windows per service and scores each window with an ML model. *(Phase 6)*
-4. Anomalies get a severity level and are stored in PostgreSQL; serious ones trigger alerts. *(Phases 6, 8)*
+3. The **detection service** reads the same Kafka topic independently, parses messages into templates (Drain), groups logs into 60-second windows per service and scores each window with a PCA model.
+4. Every anomaly gets a **severity** (LOW–CRITICAL) with human-readable **reasons**, is stored in PostgreSQL and published to `anomalies.detected`; serious ones will trigger alerts. *(alerting: Phase 8)*
 5. The **dashboard** shows live anomalies, alerts, log search and trends. *(Phases 7, 9)*
 
 ## Technology stack
@@ -78,14 +78,21 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 ## Running the pipeline
 
-Use two terminals, both with the virtual environment activated.
+Use three terminals, all with the virtual environment activated. The detection service needs a trained, active model (see [Training the detection model](#training-the-detection-model)).
 
 **Terminal 1 — ingestion service (Kafka → Elasticsearch):**
 ```powershell
 python -m backend.ingestion.consumer
 ```
 
-**Terminal 2 — send logs:**
+**Terminal 2 — detection service (Kafka → PostgreSQL + anomalies.detected):**
+```powershell
+python -m backend.detection.service
+```
+Each closed minute is printed with log counts per service; anomalies are shown with severity and reasons, e.g.
+`! payment-service CRITICAL (score 0.84): error rate 42.2%`.
+
+**Terminal 3 — send logs:**
 ```powershell
 # 60 seconds of normal traffic
 python -m backend.log_generator.generator --kafka --duration 60
@@ -97,12 +104,24 @@ python -m backend.log_generator.generator --kafka --scenario error_burst --warmu
 python -m backend.log_generator.generator --kafka --scenario all
 ```
 
+**Check detection against the ground truth** (the generator prints the ground-truth file name):
+```powershell
+python scripts/check_detection.py data/ground_truth/<run-id>.jsonl
+```
+Reports, per fault and per incident, how many windows were flagged, their severities and the real time-to-detect, plus false alarms in quiet periods.
+
 **Search the stored logs:**
 ```powershell
 python scripts/search_logs.py --minutes 10
 python scripts/search_logs.py --minutes 10 --level ERROR
 python scripts/search_logs.py --minutes 10 --q "timeout"
 python scripts/search_logs.py --trace <trace_id>
+```
+
+**Look at stored anomalies and published messages:**
+```powershell
+docker exec cla-postgres psql -U cla_user -d cla_db -c "SELECT s.name, a.window_start, a.severity, a.summary->'reasons' FROM anomalies a JOIN services s ON s.id = a.service_id ORDER BY a.window_start;"
+docker exec cla-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic anomalies.detected --from-beginning --max-messages 2 --timeout-ms 15000
 ```
 
 **Other tools:**
@@ -114,7 +133,46 @@ python scripts/search_logs.py --trace <trace_id>
 | `python scripts/summarize_logs.py <file> --ground-truth <gt file>` | Per-minute summary with fault windows marked |
 | `python scripts/kafka_peek.py --show 5` | Inspect logs.raw and check the keying contract |
 | `python scripts/send_invalid_logs.py` | Send broken messages to test validation |
+| `python scripts/send_future_log.py` | Send one event dated 2030 (robustness test: both services must reject it) |
 | `python scripts/pipeline_latency.py --minutes 3` | Measure pipeline latency after a live run |
+| `python scripts/check_detection.py <gt file>` | Compare stored anomalies with ground truth |
+| `python experiments/replay_windows.py <file> --ground-truth <gt file>` | Replay a log file through windowing and features (no Kafka) |
+| `python -m backend.detection.service --idle-exit 30 --group <name> --allow-future` | Replay what is in Kafka with a fresh consumer group (fast-mode runs need `--allow-future`) |
+
+## Training the detection model
+
+The live model is trained on normal traffic only, saved as an immutable **model package** (model, Drain parser state, metadata) and registered as the **active model** in PostgreSQL. The detection service loads the active model at start-up.
+
+```powershell
+# 1. Normal training traffic: three runs of 2 hours with different seeds (seconds each)
+python -m backend.log_generator.generator --duration 7200 --fast --seed 1 --output data/processed/train_normal_1.jsonl
+python -m backend.log_generator.generator --duration 7200 --fast --seed 2 --output data/processed/train_normal_2.jsonl
+python -m backend.log_generator.generator --duration 7200 --fast --seed 3 --output data/processed/train_normal_3.jsonl
+
+# 2. Evaluation data: a fault run with ground truth, and a fresh fault-free run
+python -m backend.log_generator.generator --scenario all --fast --seed 42 --output data/processed/all_faults.jsonl
+python -m backend.log_generator.generator --duration 3600 --fast --seed 4 --output data/processed/normal_eval_4.jsonl
+
+# 3. Train, check, evaluate and register (one line; use the ground-truth file printed in step 2)
+python -m backend.detection.train --train data/processed/train_normal_1.jsonl data/processed/train_normal_2.jsonl data/processed/train_normal_3.jsonl --version 1.1.0 --eval data/processed/all_faults.jsonl --ground-truth data/ground_truth/<run-id>.jsonl --normal-eval data/processed/normal_eval_4.jsonl --register
+```
+
+`train.py` checks that the reloaded package reproduces the in-memory scores exactly, reports detection per fault with severities and reasons, and the false-alarm rate on the fault-free run. Packages go to `models/trained/<name>-<version>/` (not committed); a copy of each model's metadata is committed in `models/metadata/`. A version can never be overwritten — use a new `--version`.
+
+## Research results (offline, Phase 5)
+
+Models were compared on two public benchmark datasets from [LogHub](https://github.com/logpai/loghub) (Zenodo record 8196385: `HDFS_v1.zip`, `BGL.zip`, placed in `data/raw/`), with chronological 60/20/20 splits and models trained on normal data only.
+
+| Test set | Lookup baseline | PCA | One-Class SVM | Best simple rule |
+|---|---|---|---|---|
+| HDFS F1 (label-free threshold) | 0.978 | 0.965 | 0.971 | — |
+| BGL F1 (label-free threshold) | 0.210 | 0.333 (0.486 with log counts + levels) | 0.300 (0.468) | FATAL count 0.840 (validation-tuned) |
+
+- **RQ1:** on stable, repetitive logs (HDFS) PCA and One-Class SVM nearly match a lookup table; on drifting logs (BGL: 74% of normal test windows contain message types unseen in training, caused by a monitoring change on 15 Nov 2005) every novelty-based method degrades.
+- **RQ2:** the best feature representation depends on the data — log-scaled counts help on bursty BGL and hurt on HDFS; retraining on one more month did not counter BGL's step-change drift.
+- **Live system (Phase 6):** global PCA with log counts was chosen from six configurations. Model `live-pca 1.1.0`: all injected incidents detected, about 33 s after a fault starts in a real-time run; 0.34% false-alarm windows on a fault-free hour, graded LOW.
+
+Details: [research plan and results](docs/research/research-plan.md), [detection design](docs/design/detection-design.md), result files in `experiments/results/`.
 
 ## Managing the stack
 
@@ -151,13 +209,14 @@ Integration test files end in `_integration.py` or live in `tests/integration/`.
 backend/
   log_generator/  Simulated microservices, fault scenarios, Kafka producer
   ingestion/      Kafka consumer, validation, dead-letter, Elasticsearch sink
-  detection/      Preprocessing, features, ML models, scoring (Phase 5–6)
+  detection/      Drain parsing, windowing, features, models, severity, training,
+                  model packages and registry, live detection service
   api/            FastAPI application (Phase 7)
 frontend/         React + TypeScript dashboard (Phase 9)
 infrastructure/   Docker Compose, database schema, monitoring config
 data/             Datasets and ground truth (generated, not committed)
-experiments/      Notebooks and model comparison results
-models/           Trained models and metadata (not committed)
+experiments/      Notebooks, experiment scripts and model comparison results
+models/           Trained model packages (not committed) and metadata (committed)
 docs/             Architecture, design documents, research, devlog
 scripts/          Setup, start, smoke test and pipeline tools
 tests/            Unit and integration tests
@@ -171,7 +230,9 @@ tests/            Unit and integration tests
 | [Data contracts](docs/design/contracts.md) | Log schema, Kafka topics, message formats |
 | [Database design](docs/design/database-design.md) | PostgreSQL tables, relationships, indexes |
 | [Elasticsearch design](docs/design/elasticsearch-design.md) | Index naming, template, mappings, idempotency |
+| [Detection design](docs/design/detection-design.md) | Windows, watermark, features, model, severity, publishing — each decision with its evidence |
 | [API contracts](docs/design/api-contracts.md) | REST endpoints and WebSocket protocol |
+| [Research plan and results](docs/research/research-plan.md) | Research questions, method, RQ1/RQ2 results, threats to validity |
 | [Development log](docs/devlog/) | Daily progress, decisions and problems solved |
 
 ## Roadmap
@@ -183,9 +244,9 @@ tests/            Unit and integration tests
 | 2 | Infrastructure (Kafka, PostgreSQL, Elasticsearch) | ✅ Done |
 | 3 | Log generator with fault injection and ground truth | ✅ Done |
 | 4 | Ingestion pipeline (validation, dead-letter, Elasticsearch) | ✅ Done |
-| 5 | ML research on benchmark datasets (HDFS, BGL) | ⏳ Next |
-| 6 | Real-time detection service | Pending |
-| 7 | Backend API | Pending |
+| 5 | ML research on benchmark datasets (HDFS, BGL) | ✅ Done |
+| 6 | Real-time detection service | ✅ Done |
+| 7 | Backend API | ⏳ Next |
 | 8 | Alerting | Pending |
 | 9 | React dashboard | Pending |
 | 10 | Integration, live evaluation, performance testing | Pending |
@@ -196,11 +257,17 @@ tests/            Unit and integration tests
 | Problem | Fix |
 |---|---|
 | Scripts say Docker is not running | Start Docker Desktop, wait until it is ready, then `.\scripts\start.ps1 up` |
+| A service reports Kafka, PostgreSQL or Elasticsearch unreachable | The stack is probably stopped (e.g. after the laptop slept): `.\scripts\start.ps1 status`, then `.\scripts\start.ps1 up` |
 | PostgreSQL "password authentication failed" | Another PostgreSQL may be using the port. Change `POSTGRES_PORT` in `.env`, then `.\scripts\start.ps1 reset` |
 | "port is already allocated" / "forbidden by its access permissions" | Port is used or reserved by Windows. List reserved ranges: `netsh interface ipv4 show excludedportrange protocol=tcp` and pick a free port |
 | Smoke test says Kafka topics are missing | Topics are created a few seconds after startup; `start.ps1 up` waits automatically |
 | Elasticsearch unhealthy | Check memory in Docker Desktop (needs ~2 GB) and run `.\scripts\start.ps1 logs elasticsearch` |
 | pytest "import file mismatch" | Two test files share a name; integration tests must end in `_integration.py` |
+| Detection: "No active model in model_registry" | Train and register a model (see [Training the detection model](#training-the-detection-model)) |
+| A service should only process new logs | Stop it, then move its consumer group to the end of the topic: `docker exec cla-kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group detection-group --reset-offsets --to-latest --topic logs.raw --execute` (same for `ingestion-group`) |
+| Detection skips events "more than 5 min in the future" | Expected for invalid timestamps. For replays of `--fast` runs (timestamps in the future by design) start the service with `--allow-future` |
+| Detection prints many "no logs" anomalies after a restart | Should not happen (per-partition watermark, Day 24); check the `late` count in the final summary and report it |
+| `check_detection.py` shows `0/0` windows for a fault | The run was not finished or the detection service was not running during it |
 
 ## License
 
