@@ -16,6 +16,9 @@ Mask sets:
 - SERVICE_LOG_MASKS:  DEFAULT_MASKS plus alphanumeric identifiers (user ids like "u6601",
                       transaction ids like "txn_c9731bc4b8"); used for the simulated microservice
                       logs and the live detection service.
+
+A persistence handler (drain3 FilePersistence) can be passed to load a saved parser state;
+model packages use this so template ids stay identical between training and live detection.
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ from dataclasses import dataclass
 
 from drain3 import TemplateMiner
 from drain3.masking import MaskingInstruction
+from drain3.persistence_handler import PersistenceHandler
 from drain3.template_miner_config import TemplateMinerConfig
 
 # Order matters: specific patterns first, generic numbers last.
@@ -63,8 +67,12 @@ def create_template_miner(
     sim_threshold: float = DEFAULT_SIM_THRESHOLD,
     depth: int = DEFAULT_DEPTH,
     masks: tuple[tuple[str, str], ...] = DEFAULT_MASKS,
+    persistence: PersistenceHandler | None = None,
 ) -> TemplateMiner:
-    """A Drain template miner with masking; feed messages with miner.add_log_message(text)."""
+    """
+    A Drain template miner with masking; feed messages with miner.add_log_message(text).
+    With a persistence handler, a previously saved parser state is loaded at creation.
+    """
     config = TemplateMinerConfig()
     config.drain_sim_th = sim_threshold
     config.drain_depth = depth
@@ -72,7 +80,7 @@ def create_template_miner(
     config.mask_prefix = "<"
     config.mask_suffix = ">"
     config.profiling_enabled = False
-    return TemplateMiner(config=config)
+    return TemplateMiner(persistence_handler=persistence, config=config)
 
 
 def templates_of(miner: TemplateMiner) -> list[Template]:

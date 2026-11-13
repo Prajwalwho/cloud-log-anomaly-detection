@@ -1,0 +1,192 @@
+{
+  "name": "live-pca",
+  "version": "1.0.0",
+  "created_at": "2026-11-11T13:57:09.294381+00:00",
+  "configuration": {
+    "algorithm": "pca",
+    "log_counts": true,
+    "per_service": false,
+    "percentile": 99.9,
+    "min_std": 0.01,
+    "window_s": 60.0,
+    "grace_s": 5.0
+  },
+  "parser": {
+    "masks": [
+      [
+        "blk_-?\\d+",
+        "BLK"
+      ],
+      [
+        "(\\d{1,3}\\.){3}\\d{1,3}(:\\d+)?",
+        "IP"
+      ],
+      [
+        "\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b",
+        "UUID"
+      ],
+      [
+        "\\b0x[0-9a-fA-F]+\\b",
+        "HEX"
+      ],
+      [
+        "(/[\\w.\\-]+){2,}",
+        "PATH"
+      ],
+      [
+        "\\b(?=\\w*[A-Za-z])(?=\\w*\\d)\\w+\\b",
+        "ID"
+      ],
+      [
+        "(?<![A-Za-z0-9_])-?\\d+(\\.\\d+)?(?![A-Za-z0-9_])",
+        "NUM"
+      ]
+    ],
+    "sim_threshold": 0.9,
+    "depth": 4,
+    "templates": 31
+  },
+  "features": [
+    "E1",
+    "E2",
+    "E3",
+    "E4",
+    "E5",
+    "E6",
+    "E7",
+    "E8",
+    "E9",
+    "E10",
+    "E11",
+    "E12",
+    "E13",
+    "E14",
+    "E15",
+    "E16",
+    "E17",
+    "E18",
+    "E19",
+    "E20",
+    "E21",
+    "E22",
+    "E23",
+    "E24",
+    "E25",
+    "E26",
+    "E27",
+    "E28",
+    "E29",
+    "E30",
+    "E31",
+    "unseen",
+    "log_count",
+    "error_rate",
+    "warn_rate",
+    "latency_mean_ms",
+    "latency_p95_ms",
+    "new_templates"
+  ],
+  "thresholds": {
+    "*": 9.898910668674496
+  },
+  "spreads": {
+    "*": 8.942935704355092
+  },
+  "training": {
+    "files": [
+      "train_normal_1.jsonl",
+      "train_normal_2.jsonl",
+      "train_normal_3.jsonl"
+    ],
+    "windows": 1785,
+    "windows_per_service": {
+      "api-gateway": 357,
+      "auth-service": 357,
+      "inventory-service": 357,
+      "order-service": 357,
+      "payment-service": 357
+    },
+    "training_flag_rate": 0.0011204481792717086
+  },
+  "evaluation": {
+    "fault_run": {
+      "file": "all_faults.jsonl",
+      "ground_truth": "run-20261110-153448.jsonl",
+      "windows": 200,
+      "faulty_windows": 21,
+      "precision": 0.5714285714285714,
+      "recall": 0.9523809523809523,
+      "f1": 0.7142857142857142,
+      "full_window_recall": 1.0,
+      "edge_window_recall": 0.9285714285714286,
+      "incidents_detected": 7,
+      "incidents": 7,
+      "quiet_windows": 20,
+      "quiet_false_alarms": 0,
+      "per_record": [
+        {
+          "scenario": "error_burst",
+          "service": "payment-service",
+          "flagged": 3,
+          "windows": 3,
+          "time_to_detect_s": 11.399
+        },
+        {
+          "scenario": "latency_spike",
+          "service": "order-service",
+          "flagged": 3,
+          "windows": 3,
+          "time_to_detect_s": 11.399
+        },
+        {
+          "scenario": "new_error",
+          "service": "inventory-service",
+          "flagged": 3,
+          "windows": 3,
+          "time_to_detect_s": 11.399
+        },
+        {
+          "scenario": "silent_service",
+          "service": "auth-service",
+          "flagged": 2,
+          "windows": 3,
+          "time_to_detect_s": 71.399
+        },
+        {
+          "scenario": "cascading_failure",
+          "service": "order-service",
+          "flagged": 4,
+          "windows": 4,
+          "time_to_detect_s": 11.399
+        },
+        {
+          "scenario": "cascading_failure",
+          "service": "payment-service",
+          "flagged": 3,
+          "windows": 3,
+          "time_to_detect_s": 11.399
+        },
+        {
+          "scenario": "cascading_failure",
+          "service": "inventory-service",
+          "flagged": 2,
+          "windows": 2,
+          "time_to_detect_s": 41.399
+        }
+      ]
+    },
+    "normal_run": {
+      "file": "normal_eval_4.jsonl",
+      "windows": 295,
+      "false_alarms": 1,
+      "false_alarm_rate": 0.003389830508474576,
+      "false_alarms_per_service": {
+        "api-gateway": 1,
+        "auth-service": 0,
+        "order-service": 0,
+        "payment-service": 0,
+        "inventory-service": 0
+      }
+    }
+  }
+}
