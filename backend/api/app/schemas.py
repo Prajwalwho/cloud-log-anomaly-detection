@@ -1,5 +1,5 @@
 """
-Response models (api-contracts.md 1.1). Timestamps serialise to the contract format (ms precision, Z).
+Response and request models (api-contracts.md 1.1). Timestamps serialise to the contract format (ms precision, Z).
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from .timeutil import iso_ms
 
 UtcDatetime = Annotated[datetime, PlainSerializer(iso_ms, return_type=str, when_used="json")]
 T = TypeVar("T")
+Severity = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 
 
 class Page(BaseModel, Generic[T]):
@@ -46,3 +47,36 @@ class ModelOut(BaseModel):
     trained_at: UtcDatetime
     parameters: dict
     metrics: dict
+
+
+class ModelRef(BaseModel):
+    id: int
+    name: str
+    version: str
+
+
+class AnomalyOut(BaseModel):
+    """Anomaly item (api-contracts.md §3.5)."""
+    id: str
+    service: str
+    detected_at: UtcDatetime
+    window_start: UtcDatetime
+    window_end: UtcDatetime
+    anomaly_score: float
+    severity: Severity
+    model: ModelRef
+    summary: dict
+    alert_id: str | None
+    feedback: Literal["CONFIRMED", "FALSE_POSITIVE"] | None
+
+
+class AnomalyDetailOut(AnomalyOut):
+    """Anomaly detail (api-contracts.md §3.6): item plus its sample log events from Elasticsearch."""
+    sample_event_ids: list[str]
+    sample_logs: list[dict]
+    sample_logs_error: str | None = None
+
+
+class FeedbackIn(BaseModel):
+    """PATCH /anomalies/{id}/feedback (api-contracts.md §3.7); null clears the feedback."""
+    feedback: Literal["CONFIRMED", "FALSE_POSITIVE"] | None

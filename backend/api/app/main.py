@@ -17,6 +17,8 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 import psycopg
+from elasticsearch import ConnectionError as EsConnectionError
+from elasticsearch import ConnectionTimeout as EsConnectionTimeout
 from elasticsearch import Elasticsearch
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +27,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool, PoolTimeout
 
 from .config import ApiSettings
-from .routers import health, models, services
+from .routers import anomalies, health, logs, models, services
 
 API_PREFIX = "/api/v1"
 
@@ -65,7 +67,12 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     async def postgres_unavailable(_request: Request, _exc: Exception) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": "PostgreSQL unavailable"})
 
-    for router in (health.router, services.router, models.router):
+    @app.exception_handler(EsConnectionError)
+    @app.exception_handler(EsConnectionTimeout)
+    async def elasticsearch_unavailable(_request: Request, _exc: Exception) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": "Elasticsearch unavailable"})
+
+    for router in (health.router, services.router, models.router, anomalies.router, logs.router):
         app.include_router(router, prefix=API_PREFIX)
     return app
 
