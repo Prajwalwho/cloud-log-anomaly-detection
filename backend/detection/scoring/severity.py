@@ -12,10 +12,11 @@ carries human-readable reasons.
     new message types         any
 
 Severity = the highest signal found; LOW if the model flagged the window but no signal crosses a limit.
-The limits are design choices based on operational reasoning (not fitted to labels); they are checked
+The limits are design choices based on operational reasoning (not fitted to labels); they were checked
 against the fault and fault-free runs (Day 25).
 
-(Day 24 used score bands; real faults saturated the score and nearly everything was CRITICAL.)
+Ratios are shown with two decimals: with one decimal, 2.97x appeared as "3.0x" on a MEDIUM anomaly and seemed
+to contradict the 3x HIGH limit (Day 25).
 """
 from __future__ import annotations
 
@@ -58,7 +59,7 @@ def grade(summary: dict, baseline: dict | None = None, no_logs: bool = False) ->
             ratio = p95 / normal_p95
             for limit, severity in LATENCY_RATIO_LIMITS:
                 if ratio >= limit:
-                    findings.append((severity, f"p95 latency {p95:.0f} ms ({ratio:.1f}x normal)"))
+                    findings.append((severity, f"p95 latency {p95:.0f} ms ({ratio:.2f}x normal)"))
                     break
         if summary.get("new_templates"):
             findings.append(("MEDIUM", f"{summary['new_templates']} new message type(s)"))

@@ -1,7 +1,7 @@
 # Detection Service Design
 ## Cloud Log Anomaly Detection for Proactive Fault Management
 
-Version: 1.4 (Phase 6). Every decision below refers to the evidence it is based on.
+Version: 1.5 (end of Phase 6). Every decision below refers to the evidence it is based on.
 
 ---
 
@@ -10,6 +10,7 @@ Version: 1.4 (Phase 6). Every decision below refers to the evidence it is based 
 The detection service (backend/detection/service.py) consumes `logs.raw` in its own consumer group
 (`detection-group`), builds 60-second windows per service, extracts features, scores each window, grades
 severity, stores every window and every anomaly in PostgreSQL, and publishes anomalies to `anomalies.detected`.
+It runs independently of ingestion (`ingestion-group`), which stores the same events in Elasticsearch.
 
 ## 2. Windowing (implemented: windowing.py, watermark.py, offsets.py)
 
@@ -17,7 +18,8 @@ severity, stores every window and every anomaly in PostgreSQL, and publishes ano
 |---|---|---|
 | Window | Tumbling 60 s per service, aligned to whole minutes (UTC) | Architecture decision (Day 0); live faults last 2–3 min |
 | Empty windows | Created for every known service even with no logs | silent_service produces 0 logs (Day 7); verified in replay (Day 21) |
-| Watermark | Per-partition: minimum latest event time over partitions that still have unread data (judged against Kafka's high-water mark); if one of them has delivered nothing yet, no window closes; when all partitions are caught up, the later of wall-clock time and latest event time | Day 24: a global "latest event time" watermark dropped 13,835 events as late; "minimum over partitions seen" dropped 23,353; this rule: 0 late in a 68,345-event replay |
+| Watermark | Per-partition: minimum latest event time over partitions that still have unread data (judged against Kafka's high-water mark); if one of them has delivered nothing yet, no window closes; when all partitions are caught up, the later of wall-clock time and latest event time | Day 24: a global "latest event time" watermark dropped 13,835 events as late; "minimum over partitions seen" dropped 23,353; this rule: 0 late in a 68,345-event replay and in the Day 26 live run |
+| Future timestamps | Events more than 5 min in the future are counted and skipped (same rule as ingestion); --allow-future for fast-mode test replays | Day 26: a 2030 event was skipped by detection and dead-lettered by ingestion; late stayed 0 |
 | Closing | A window closes when the watermark minus 5 s grace passes its end | Pipeline delay ≤ ~1.1 s (Day 11) |
 | Late events | Counted and dropped, never added to a wrong window | The late counter exposed the watermark bug (Day 24) |
 | Offsets | Committed only for events whose windows are closed and stored | A restart replays open windows instead of losing them |
@@ -47,7 +49,8 @@ severity, stores every window and every anomaly in PostgreSQL, and publishes ano
 | Baselines | Per service: median log count and median p95 latency of training windows | Severity compares a window with its own service's normal behaviour (Day 25) |
 | Packaging | Detector + Drain state + metadata; versions immutable; Drain state loaded read-only | Template ids must match feature columns (Day 23) |
 | Active model | Read from model_registry at start-up; current: live-pca 1.1.0 (id 5) | Days 23, 25 |
-| Measured | live-pca 1.1.0: fault run recall 0.952, 7/7 incidents, 0/20 quiet false alarms; fault-free run 1 false alarm in 295 windows (0.34%), graded LOW | Day 25 |
+| Measured offline | live-pca 1.1.0: fault run recall 0.952, 7/7 incidents, 0/20 quiet false alarms; fault-free run 1 false alarm in 295 windows (0.34%), graded LOW | Day 25 |
+| Measured live | Real-time run with ingestion and detection: 5/5 incidents detected 32–33 s after fault start; 0 late events | Day 26 |
 
 ## 5. Score normalisation and severity (implemented: live_model.py, scoring/severity.py, scoring/judge.py)
 
@@ -58,7 +61,7 @@ severity, stores every window and every anomaly in PostgreSQL, and publishes ano
   whose scores can be negative.)
 - Flag (whether): the model flags the window, or the service has no logs while other services have traffic.
 - Severity (how harmful): rules on what the window shows compared with the service's baseline; the highest
-  signal wins, LOW if none crosses a limit. Every anomaly stores its reasons.
+  signal wins, LOW if none crosses a limit. Every anomaly stores its reasons (ratios with two decimals).
 
 | Signal | MEDIUM | HIGH | CRITICAL |
 |---|---|---|---|
@@ -75,7 +78,7 @@ severity, stores every window and every anomaly in PostgreSQL, and publishes ano
 ## 6. Publishing (implemented: publisher.py)
 
 - New anomalies are published to `anomalies.detected` (key = service, acks=all, idempotent) after they are
-  stored. PostgreSQL is the source of truth; failed publishes are counted and reported.
+  stored. PostgreSQL is the source of truth; failed publishes are counted and reported (Day 26: 23/23 published).
 - Message: schema_version, anomaly_id, detected_at, service, window_start, window_end, anomaly_score, severity,
   model {id, name, version}, summary (incl. reasons), sample_event_ids.
 
@@ -84,11 +87,13 @@ severity, stores every window and every anomaly in PostgreSQL, and publishes ano
 - The Drain miner state learned during training is saved and loaded at startup, so template ids in live
   windows match the model's feature columns. New templates found live go to the "unseen" count.
 
-## 8. Known limitations
+## 8. Known limitations and open points (Phase 10)
 - Drift: new normal message types raise false positives; BGL showed a step change (Day 20). Continuous
   retraining or marking new templates as normal is future work.
 - Service-level precision is limited by dependent services reacting during incidents (gateway 502/503,
   order and payment going quiet when auth is down); incident-level evaluation in Phase 10.
-- The service reads logs.raw directly and does not yet reject timestamps far in the future; one bogus
-  timestamp could advance the watermark. Guard planned (Day 26).
+- Partial volume drops are not always flagged: during silent auth (Day 26), a window with 34% of normal volume
+  was not flagged by the model, and severity rules only grade flagged windows. Candidate: a volume rule that
+  can also flag (e.g. below 50% of baseline), to be tested against fault-free runs before adoption.
 - detected_at is meaningful for time-to-detect only in real-time runs (fast-mode runs have future timestamps).
+- Live evaluation runs need quiet periods (default 5-minute gaps); with 2-minute gaps no window is quiet.

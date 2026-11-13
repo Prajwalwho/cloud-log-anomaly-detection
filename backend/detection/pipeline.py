@@ -1,23 +1,34 @@
 """
 From log events to closed windows: the processing chain shared by training, offline evaluation
-and (from Day 24) the live detection service.
+and the live detection service.
 
     events -> Drain template id -> WindowAggregator -> closed WindowStats
+
+Also the future-timestamp rule of the log contract (contracts.md): a timestamp more than 5 minutes in the
+future is invalid. Ingestion enforces it in its validator; the detection service reads logs.raw directly and
+applies the same rule, so one bogus timestamp can never advance the watermark (Day 25 finding).
 """
 from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Iterator
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from drain3 import TemplateMiner
 
 from .windowing import WindowAggregator, WindowStats
 
+MAX_FUTURE_S = 300.0
+
 
 def parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def too_far_in_future(timestamp: datetime, now: datetime | None = None, max_future_s: float = MAX_FUTURE_S) -> bool:
+    now = now or datetime.now(timezone.utc)
+    return timestamp - now > timedelta(seconds=max_future_s)
 
 
 def read_events(path: Path) -> Iterator[dict]:
@@ -37,7 +48,7 @@ def build_windows(
     complete_only: bool = True,
 ) -> list[WindowStats]:
     """
-    Parse events with Drain and group them into closed windows.
+    Parse events with Drain and group them into closed windows (offline: files, no future-timestamp check).
 
     complete_only drops the partial windows at the very start and end of the data
     (the first and last minute are only partly covered and would look like outliers).

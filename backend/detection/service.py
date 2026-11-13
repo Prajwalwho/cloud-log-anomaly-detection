@@ -10,6 +10,10 @@ been read up to its high-water mark (Kafka). While any partition is behind, wind
 minimum latest event time of the lagging partitions (or not at all if one has delivered nothing yet); when
 all are caught up, wall-clock time is used. Windows close at watermark minus grace.
 
+Future timestamps: events more than 5 minutes in the future (contract rule, also enforced by ingestion) are
+counted and skipped, so a bogus timestamp can never advance the watermark. --allow-future disables this for
+fast-mode test replays, whose timestamps are deliberately in the future.
+
 Delivery: offsets are committed only for events whose windows are closed and written (OffsetTracker), so a
 restart replays the open windows instead of losing them. Storing is idempotent (store.py). Anomalies are
 published after they are stored; PostgreSQL is the source of truth.
@@ -19,7 +23,7 @@ Minutes without any traffic are stored without anomalies, not printed, and repor
 
 Usage (from the project root):
     python -m backend.detection.service
-    python -m backend.detection.service --idle-exit 60 --group detection-replay
+    python -m backend.detection.service --idle-exit 60 --group detection-replay --allow-future
 """
 from __future__ import annotations
 
@@ -35,7 +39,7 @@ from confluent_kafka import Consumer, KafkaException, TopicPartition
 from .config import DetectionSettings
 from .offsets import OffsetTracker
 from .package import load_package
-from .pipeline import parse_timestamp
+from .pipeline import parse_timestamp, too_far_in_future
 from .publisher import AnomalyPublisher
 from .registry import active_model
 from .scoring.judge import judge_windows
@@ -67,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Live detection service.")
     parser.add_argument("--idle-exit", type=float, help="stop after this many seconds without logs")
     parser.add_argument("--group", help="consumer group (default from settings: detection-group)")
+    parser.add_argument("--allow-future", action="store_true",
+                        help="accept timestamps more than 5 min in the future (fast-mode test replays only)")
     args = parser.parse_args(argv)
     settings = DetectionSettings()
 
@@ -108,12 +114,12 @@ def main(argv: list[str] | None = None) -> int:
     grace = timedelta(seconds=settings.grace_s)
     first_event: float | None = None
     last_message = time.monotonic()
-    events = invalid = windows_stored = anomalies_created = 0
+    events = invalid = future = windows_stored = anomalies_created = 0
     warned_idle = False
 
     print(f"Detection service: model {model['name']} {model['version']} (id {model['id']}), "
-          f"group '{group}', topic '{settings.kafka_topic_logs}' -> '{settings.kafka_topic_anomalies}'. "
-          f"Ctrl+C to stop.")
+          f"group '{group}', topic '{settings.kafka_topic_logs}' -> '{settings.kafka_topic_anomalies}'"
+          f"{', future timestamps allowed' if args.allow_future else ''}. Ctrl+C to stop.")
     try:
         while True:
             messages = consumer.consume(num_messages=500, timeout=1.0)
@@ -128,6 +134,12 @@ def main(argv: list[str] | None = None) -> int:
                 except Exception:
                     tracker.add(msg.topic(), msg.partition(), msg.offset(), float("-inf"))
                     invalid += 1
+                    continue
+                if not args.allow_future and too_far_in_future(ts):
+                    tracker.add(msg.topic(), msg.partition(), msg.offset(), float("-inf"))
+                    future += 1
+                    print(f"  [WARN] skipped event with timestamp {event['timestamp']} "
+                          f"(more than 5 min in the future): {service}")
                     continue
                 template_id = miner.add_log_message(text)["cluster_id"]
                 aggregator.add(service, ts, level, template_id, event.get("latency_ms"), event.get("event_id"))
@@ -182,8 +194,9 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         consumer.close()   # open windows are not committed: they are replayed after a restart
 
-    print(f"\nEvents {events:,} (invalid {invalid}, late {aggregator.late_events}); windows stored {windows_stored}; "
-          f"anomalies {anomalies_created} (published {publisher.delivered}, failed {publisher.failed}); "
+    print(f"\nEvents {events:,} (invalid {invalid}, future {future}, late {aggregator.late_events}); "
+          f"windows stored {windows_stored}; anomalies {anomalies_created} "
+          f"(published {publisher.delivered}, failed {publisher.failed}); "
           f"events in open windows (to be replayed): {tracker.pending}")
     return 0
 
