@@ -3,7 +3,7 @@ GET /alerts, GET /alerts/{id}, PATCH /alerts/{id} (api-contracts.md §3.8–3.10
 
 Alerts are created by the alerting service (Phase 8). Status transitions: OPEN -> ACKNOWLEDGED -> RESOLVED,
 and OPEN -> RESOLVED; anything else is 400. The alert row is locked during a change, so two concurrent updates
-cannot produce an inconsistent alert.
+cannot produce an inconsistent alert. After a committed change, "alert.updated" is pushed to /ws/live.
 """
 from __future__ import annotations
 
@@ -100,4 +100,8 @@ def update_alert(request: Request, alert_id: UUID, body: AlertPatchIn) -> dict:
         else:
             conn.execute("UPDATE alerts SET status = 'RESOLVED', resolved_at = now() WHERE id = %(id)s",
                          {"id": alert_id})
-        return _fetch_alert(conn, alert_id)
+        item = _fetch_alert(conn, alert_id)
+    # Committed: tell every open dashboard.
+    request.app.state.hub.publish_threadsafe(
+        {"type": "alert.updated", "data": AlertOut.model_validate(item).model_dump(mode="json")})
+    return item

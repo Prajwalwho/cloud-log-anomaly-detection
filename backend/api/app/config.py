@@ -24,6 +24,11 @@ class ApiSettings(BaseSettings):
     kafka_topic_anomalies: str = "anomalies.detected"
     api_group_id: str = "api-group"
 
+    # Live feed (/ws/live)
+    live_kafka_enabled: bool = True          # tests without Kafka switch the listener off
+    live_ping_s: float = 30.0                # api-contracts.md §4
+    live_queue_size: int = 100               # per browser; a full queue closes that connection
+
     # HTTP
     cors_origins: str = "http://localhost:5173"      # Vite dev server (dashboard, Phase 9)
     dependency_timeout_s: float = 3.0               # health checks and pool waits
