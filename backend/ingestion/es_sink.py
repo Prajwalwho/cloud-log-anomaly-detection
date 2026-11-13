@@ -13,6 +13,8 @@ Elasticsearch sink for the ingestion service.
   logs are lost; they are re-read from Kafka after restart.
 - Documents Elasticsearch rejects permanently are returned to the consumer, which sends
   them to the dead-letter topic.
+- Timestamps are stored in the contract format (ISO 8601 UTC, millisecond precision, Z).
+  model_dump(mode="json") writes datetimes with microseconds ("…53.074000Z"); fixed on Day 29.
 """
 from __future__ import annotations
 
@@ -75,9 +77,15 @@ def index_name(prefix: str, timestamp: datetime) -> str:
     return f"{prefix}-{timestamp.astimezone(timezone.utc):%Y.%m.%d}"
 
 
+def format_timestamp_ms(value: datetime) -> str:
+    """Contract format (contracts.md §1): 2026-11-08T10:15:30.123Z."""
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 def to_document(event: LogEvent, ingested_at: str) -> dict:
     """Elasticsearch document: the log event plus the time ingestion stored it."""
     document = event.model_dump(mode="json")
+    document["timestamp"] = format_timestamp_ms(event.timestamp)    # not Pydantic's microsecond format
     document["ingested_at"] = ingested_at
     return document
 

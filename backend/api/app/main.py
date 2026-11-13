@@ -27,7 +27,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool, PoolTimeout
 
 from .config import ApiSettings
-from .routers import anomalies, health, logs, models, services
+from .routers import alerts, anomalies, health, logs, models, services, stats
 
 API_PREFIX = "/api/v1"
 
@@ -72,7 +72,8 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     async def elasticsearch_unavailable(_request: Request, _exc: Exception) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": "Elasticsearch unavailable"})
 
-    for router in (health.router, services.router, models.router, anomalies.router, logs.router):
+    for router in (health.router, services.router, models.router, anomalies.router, logs.router,
+                   alerts.router, stats.router):
         app.include_router(router, prefix=API_PREFIX)
     return app
 
