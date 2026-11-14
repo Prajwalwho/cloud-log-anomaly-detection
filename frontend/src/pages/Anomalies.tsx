@@ -140,7 +140,6 @@ export function Anomalies() {
                     <th>Severity</th>
                     <th>Score</th>
                     <th>What happened</th>
-                    <th><span className="sr-only">Review</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -163,8 +162,8 @@ export function Anomalies() {
                       <td className="nowrap">{a.service}</td>
                       <td><SeverityBadge severity={a.severity} /></td>
                       <td><ScoreMeter score={a.anomaly_score} /></td>
-                      <td className="reason-cell">{whatHappened(a)}</td>
-                      <td className="nowrap">
+                      <td className="reason-cell">
+                        {whatHappened(a)}
                         {a.feedback && (
                           <span className={`review review-${a.feedback.toLowerCase()}`}>{FEEDBACK_LABEL[a.feedback]}</span>
                         )}
@@ -192,13 +191,15 @@ export function Anomalies() {
           )}
         </div>
 
-        <AnomalyDetail
-          detail={detail.detail}
-          loading={detail.loading}
-          error={detail.error}
-          onClose={() => update({ id: null }, true)}
-          onChanged={changed}
-        />
+        {selected && (
+          <AnomalyDetail
+            detail={detail.detail}
+            loading={detail.loading}
+            error={detail.error}
+            onClose={() => update({ id: null }, true)}
+            onChanged={changed}
+          />
+        )}
       </div>
     </section>
   )
