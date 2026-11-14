@@ -26,16 +26,16 @@ export function ErrorRateChart({ series, from, to, interval }: Props) {
   const services = orderServices(series.series.map((s) => s.service))
   if (services.length === 0) return <p className="muted">No analysed windows in this range yet.</p>
   const values = lookupBySeries(series.series)
-  let dataMax = 0
   const rows = times.map((t) => {
     const row: Record<string, number | null> = { t }
-    for (const s of services) {
-      const v = values.get(s)?.get(t) ?? null
-      row[s] = v
-      if (v !== null && v > dataMax) dataMax = v
-    }
+    for (const s of services) row[s] = values.get(s)?.get(t) ?? null
     return row
   })
+  // highest error rate in the range, computed after the rows are built (no variable changed inside map)
+  const dataMax = rows.reduce(
+    (max, row) => services.reduce((m, s) => Math.max(m, row[s] ?? 0), max),
+    0,
+  )
   const ticks = axisTicks(dataMax)
 
   return (
