@@ -1,5 +1,5 @@
 // Sidebar (name, navigation, backend health and live-feed signals) and a top bar with the time range picker.
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { BellRing, Cpu, LayoutDashboard, ScrollText, TriangleAlert } from 'lucide-react'
 import { api } from '../services/api'
@@ -87,7 +87,10 @@ export function Layout() {
           <RangePicker />
         </header>
         <main className="content">
-          <Outlet />
+          {/* Pages are loaded on first visit (App.tsx); the shell stays visible meanwhile. */}
+          <Suspense fallback={<p className="muted page-loading">Loading…</p>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

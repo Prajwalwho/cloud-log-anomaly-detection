@@ -1,0 +1,73 @@
+/* Models page. Uses .panel and .readout (index.css) and .hint, .text-link, .nowrap (anomalies.css). */
+.model-section { margin-top: 1.5rem; }
+.model-hero { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 1.25rem 2.5rem; }
+.model-title { display: flex; gap: 1rem; align-items: flex-start; }
+.model-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--nebula);
+  background: radial-gradient(circle at 35% 30%, rgba(154, 139, 208, 0.35), rgba(154, 139, 208, 0.06) 70%);
+  box-shadow: 0 0 0 1px rgba(154, 139, 208, 0.3);
+}
+.eyebrow { color: var(--healthy); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.model-hero h2 { font-size: 1.6rem; margin: 0.1rem 0 0.2rem; }
+.model-version { font-family: var(--font-ui); font-size: 0.8em; color: var(--muted); }
+
+.model-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 0; align-self: center; }
+.model-facts > div { border-left: 1px solid var(--line-strong); padding-left: 1rem; }
+.model-facts dt { color: var(--muted); font-size: 0.82rem; }
+.model-facts dd { margin: 0.1rem 0 0; font-family: var(--font-display); font-size: 1.9rem; color: var(--starlight); }
+
+.model-explain h3, .sub-head {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.model-explain p { color: var(--text); max-width: 70ch; }
+
+.param-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; align-content: start; }
+.param-chips li {
+  font-size: 0.82rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  color: var(--starlight);
+  background: rgba(13, 19, 36, 0.6);
+}
+.param-chips span { color: var(--muted); margin-right: 0.2rem; }
+.model-hero > .hint { grid-column: 1 / -1; margin-top: -0.5rem; }
+
+.model-pair { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 1.5rem; margin-top: 1.5rem; align-items: start; }
+.model-eval .lead, .model-feedback .lead { margin: -0.5rem 0 1.25rem; font-size: 0.9rem; }
+.eval-readout { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.25rem; }
+.eval-readout dd { font-size: 2rem; }
+.eval-readout dd small { display: block; margin: 0.15rem 0 0; }
+.model-eval > .hint, .model-feedback > .hint { margin-top: 1rem; }
+.sub-head { margin-top: 1.5rem; }
+
+.incident-table td { vertical-align: middle; }
+.coverage { display: inline-flex; gap: 3px; vertical-align: middle; }
+.coverage span { width: 14px; height: 10px; border-radius: 3px; }
+.coverage .hit { background: var(--healthy); }
+.coverage .miss { background: rgba(196, 204, 230, 0.12); box-shadow: inset 0 0 0 1px var(--line-strong); }
+
+.versions-table td { vertical-align: middle; }
+.versions-table .active-row { background: rgba(111, 183, 168, 0.06); }
+.active-pill { font-size: 0.75rem; padding: 0.05rem 0.55rem; border-radius: 999px; color: var(--healthy); border: 1px solid var(--healthy); }
+.model-section code, .hint code, .muted code { font-family: ui-monospace, Consolas, monospace; font-size: 0.85em; color: var(--text); }
+
+@media (max-width: 1100px) {
+  .model-hero, .model-pair { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .model-facts { grid-template-columns: 1fr 1fr; }
+  .versions-table { display: block; overflow-x: auto; }
+}

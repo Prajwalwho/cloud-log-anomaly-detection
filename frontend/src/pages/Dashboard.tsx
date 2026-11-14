@@ -1,5 +1,6 @@
 // Overview: the constellation and readout (now), then the heatmap and charts (over time), then live signals.
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Constellation, type Star } from '../components/Constellation'
 import { SeverityBar } from '../components/SeverityBar'
 import { SeverityBadge } from '../components/SeverityBadge'
@@ -69,11 +70,11 @@ export function Dashboard() {
           <dl className="readout">
             <div>
               <dt>Open alerts</dt>
-              <dd>{data.summary.open_alerts}</dd>
+              <dd><Link to="/alerts" className="readout-link" title="Open the Alerts page">{data.summary.open_alerts}</Link></dd>
             </div>
             <div>
               <dt>Anomalies in the last {phrase}</dt>
-              <dd>{data.summary.total_anomalies}</dd>
+              <dd><Link to="/anomalies" className="readout-link" title="Open the Anomalies page">{data.summary.total_anomalies}</Link></dd>
               <SeverityBar counts={data.summary.by_severity} />
             </div>
             <div>
@@ -82,7 +83,10 @@ export function Dashboard() {
             </div>
             <div>
               <dt>Log lines analysed</dt>
-              <dd>{formatCompact(data.summary.total_logs)}<small>in {data.summary.total_windows} windows</small></dd>
+              <dd>
+                <Link to="/logs" className="readout-link" title="Search the logs">{formatCompact(data.summary.total_logs)}</Link>
+                <small>in {data.summary.total_windows} windows</small>
+              </dd>
             </div>
           </dl>
         )}

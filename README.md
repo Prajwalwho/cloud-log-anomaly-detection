@@ -2,7 +2,7 @@
 
 A real-time system that collects logs from cloud services, detects abnormal patterns using machine learning, and alerts administrators before problems turn into failures.
 
-> **Status:** In development. Infrastructure, log generation, ingestion, ML research, real-time detection, the backend API and alerting are complete (Phases 0–8). Next: React dashboard (Phase 9). See [Roadmap](#roadmap).
+> **Status:** In development. Infrastructure, log generation, ingestion, ML research, real-time detection, the backend API, alerting and the dashboard are complete (Phases 0–9). Next: integration, live evaluation and performance testing (Phase 10). See [Roadmap](#roadmap).
 
 ---
 
@@ -33,7 +33,7 @@ Elasticsearch  Kafka (anomalies.detected) ──► Alerting ──► Telegram
 4. Every anomaly gets a **severity** (LOW–CRITICAL) with human-readable **reasons**, is stored in PostgreSQL and published to `anomalies.detected`.
 5. The **alerting service** groups anomalies of one service into **alerts**, escalates them, resolves them automatically after 5 quiet minutes, and sends **Telegram** messages for HIGH and CRITICAL alerts.
 6. The **API** serves logs, anomalies, alerts, statistics and models over REST, and pushes anomaly and alert events to browsers over a WebSocket within about a second.
-7. The **dashboard** shows live anomalies, alerts, log search and trends. *(Phase 9)*
+7. The **dashboard** shows the services' health, an activity heatmap and trends, anomalies with their reasons and log lines, alerts to acknowledge and resolve, log search with request paths, and the active model — updated live.
 
 ## Technology stack
 
@@ -91,10 +91,11 @@ Use one terminal per component, all with the virtual environment activated, star
 | 2 | Ingestion (Kafka → Elasticsearch) | `python -m backend.ingestion.consumer` |
 | 3 | Detection (Kafka → PostgreSQL + anomalies.detected) | `python -m backend.detection.service` |
 | 4 | Alerting (anomalies → alerts → Telegram) | `python -m backend.alerting.service` |
-| 5 | Live feed in a terminal (optional) | `python scripts/watch_live.py` |
+| 5 | Dashboard | `cd frontend`, then `npm install` (first time only) and `npm run dev` → <http://localhost:5173> |
 | 6 | Traffic | see below |
+| – | Live feed in a terminal (optional) | `python scripts/watch_live.py` |
 
-Start the alerting service before the traffic: a new alerting consumer group starts at the end of the topic and only sees anomalies from after its start.
+Start the alerting service before the traffic: a new alerting consumer group starts at the end of the topic and only sees anomalies from after its start. The Logs page and the log lines in an anomaly's detail come from Elasticsearch, so they need the ingestion service; anomalies and alerts do not.
 
 **Send logs:**
 ```powershell
@@ -139,7 +140,7 @@ The alerting service turns anomalies into alerts:
 
 - Anomalies of one service within **5 minutes** of each other form **one alert** (severity = highest seen).
 - **LOW** anomalies never open an alert on their own.
-- An alert without new anomalies for **5 minutes** is **resolved** automatically; operators can also acknowledge or resolve alerts via `PATCH /api/v1/alerts/{id}`.
+- An alert without new anomalies for **5 minutes** is **resolved** automatically; operators can also acknowledge or resolve alerts on the dashboard's Alerts page (or via `PATCH /api/v1/alerts/{id}`).
 - **Telegram** gets one message when an alert reaches **HIGH**, one if it **escalates to CRITICAL**, and one when a notified alert is **resolved** — never one per anomaly.
 
 **Telegram setup (optional, one-time):**
@@ -154,6 +155,26 @@ The alerting service turns anomalies into alerts:
 5. `python scripts/telegram_setup.py --send` sends a test message.
 
 Without token and chat id the alerting service runs normally and only prints what it would have sent.
+
+## Dashboard
+
+The dashboard ("Observatory") runs on <http://localhost:5173> with `npm run dev` in `frontend/`. The Vite dev server forwards `/api` (REST and WebSocket) to the API on port 8000. One time range, chosen at the top, applies to every page; times are shown in the browser's local time.
+
+| Page | What it shows |
+|---|---|
+| Overview | Each service as a star (size = log volume, colour = health, halo = open alert, flare = new anomaly); open alerts, anomalies by severity, error rate; activity heatmap (services × time); error rate and anomaly timeline per service; live signals |
+| Anomalies | Every flagged minute with filters (service, severity, review state); detail with score against the threshold, reasons, the minute's numbers, sample log lines and a *Real problem* / *False alarm* verdict |
+| Alerts | Active and resolved alerts; detail with timeline, story (opened, escalated, acknowledged, resolved), Telegram status, its anomalies; *Acknowledge* and *Resolve* |
+| Logs | Full-text log search with service and level filters; expand a line for all fields; *Follow this request* shows one request's path through the services |
+| Models | The active model, its settings and evaluation (per injected fault), operators' verdicts, all versions |
+
+Filters and selections are part of the URL, so every view can be bookmarked or linked. The page receives anomalies and alerts over the WebSocket and reconnects by itself; the Logs page reloads only on *Refresh*.
+
+```powershell
+cd frontend
+npm run lint     # ESLint
+npm run build    # type check and production build into frontend/dist
+```
 
 ## Backend API
 
@@ -244,6 +265,7 @@ Integration test files end in `_integration.py` or live in `tests/integration/`.
 | PostgreSQL | `localhost:15432` | Database `cla_db`, user `cla_user` (see `.env`) |
 | Elasticsearch | `http://localhost:9200` | Security disabled for local development |
 | API | `http://localhost:8000` | Started with uvicorn (see above) |
+| Dashboard | `http://localhost:5173` | Vite dev server; forwards `/api` to port 8000 |
 
 ## Project structure
 
@@ -256,7 +278,7 @@ backend/
   alerting/       Grouping anomalies into alerts, auto-resolve, Telegram notifications
   api/            FastAPI application: REST endpoints and the /ws/live feed
   common/         Shared helpers (Kafka topic creation)
-frontend/         React + TypeScript dashboard (Phase 9)
+frontend/         React + TypeScript dashboard: pages, components, hooks, API client, live feed
 infrastructure/   Docker Compose, database schema, monitoring config
 data/             Datasets and ground truth (generated, not committed)
 experiments/      Notebooks, experiment scripts and model comparison results
@@ -292,8 +314,8 @@ tests/            Unit and integration tests
 | 6 | Real-time detection service | ✅ Done |
 | 7 | Backend API (REST + live WebSocket feed) | ✅ Done |
 | 8 | Alerting (grouping, auto-resolve, Telegram) | ✅ Done |
-| 9 | React dashboard | ⏳ Next |
-| 10 | Integration, live evaluation, performance testing | Pending |
+| 9 | React dashboard | ✅ Done |
+| 10 | Integration, live evaluation, performance testing | ⏳ Next |
 | 11 | Documentation and final report | Pending |
 
 ## Troubleshooting
@@ -317,6 +339,10 @@ tests/            Unit and integration tests
 | Alerting says "Telegram: off" | `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` must both be set in `.env` (and the file saved) |
 | `telegram_setup.py` finds no messages | Send your bot a new message, then run it again within a few minutes |
 | No alert appears for anomalies | The alerting service must be running before the anomalies happen; LOW anomalies never open alerts |
+| Dashboard says "The backend API is not reachable" | Start the API (uvicorn, port 8000); the page reloads by itself |
+| Dashboard Logs page shows 0 lines, or an anomaly has no log lines | The ingestion service is not running. Start it; it catches up on everything still in Kafka (`logs.raw` keeps 24 hours) |
+| `npm run dev` fails with ENOENT / no package.json | Run it inside `frontend/`, not the project root |
+| A new folder is missing from `git status` | Check `git check-ignore -v <path>`; a pattern in a `.gitignore` may match it |
 
 ## License
 

@@ -1,4 +1,8 @@
 /* Overview charts: heatmap, legends, chart panels. */
+/* Readout numbers that open their page (Overview). */
+.readout-link { color: inherit; text-decoration: none; border-bottom: 1px dashed transparent; transition: color 0.2s ease, border-color 0.2s ease; }
+.readout-link:hover, .readout-link:focus-visible { color: var(--nebula); border-bottom-color: rgba(154, 139, 208, 0.5); }
+
 .chart-panel { margin-top: 2rem; }
 .chart-panel .lead { margin: -0.5rem 0 1rem; font-size: 0.9rem; }
 .chart-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; margin-top: 1.5rem; }
