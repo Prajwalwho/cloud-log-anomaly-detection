@@ -1,6 +1,6 @@
 // Display helpers. All API times are UTC; the dashboard is the only place they become local time
 // (contracts.md §1).
-import type { LogLevel, Severity } from '../types/api'
+import type { AlertStatus, LogLevel, Severity } from '../types/api'
 
 const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
   year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
@@ -54,6 +54,20 @@ export function formatLatency(ms: number | null | undefined): string {
   return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(2)} s`
 }
 
+/** 35_000 -> "35 s", 240_000 -> "4 min", 4_320_000 -> "1 h 12 min" */
+export function formatDuration(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || ms < 0) return '—'
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds} s`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  if (hours < 24) return rest ? `${hours} h ${rest} min` : `${hours} h`
+  const days = Math.floor(hours / 24)
+  return hours % 24 ? `${days} d ${hours % 24} h` : `${days} d`
+}
+
 export const SEVERITY_COLOURS: Record<Severity, string> = {
   LOW: 'var(--sev-low)',
   MEDIUM: 'var(--sev-medium)',
@@ -67,4 +81,16 @@ export const LEVEL_COLOURS: Record<LogLevel, string> = {
   WARN: 'var(--sev-medium)',
   ERROR: 'var(--sev-high)',
   FATAL: 'var(--sev-critical)',
+}
+
+export const STATUS_COLOURS: Record<AlertStatus, string> = {
+  OPEN: 'var(--sev-high)',
+  ACKNOWLEDGED: 'var(--nebula)',
+  RESOLVED: 'var(--healthy)',
+}
+
+export const STATUS_NAMES: Record<AlertStatus, string> = {
+  OPEN: 'Open',
+  ACKNOWLEDGED: 'Acknowledged',
+  RESOLVED: 'Resolved',
 }

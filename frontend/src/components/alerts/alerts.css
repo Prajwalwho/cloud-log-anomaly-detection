@@ -1,0 +1,71 @@
+/* Alerts page. The shared list / detail styles (filters, chips, layout, detail panel, pager, buttons) come from
+   anomalies.css, which the Alerts page imports too; this file adds what is specific to alerts. */
+.group-count { margin-left: 0.4rem; color: var(--faint); font-size: 0.78rem; }
+.range button[aria-checked='true'] .group-count { color: var(--muted); }
+
+.status-pill { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text); white-space: nowrap; }
+.status-pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--dot); flex-shrink: 0; }
+.status-open::before { animation: alert-breathe 2.6s ease-in-out infinite; }
+.status-resolved { color: var(--muted); }
+
+@keyframes alert-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(227, 162, 95, 0.5); }
+  50% { box-shadow: 0 0 0 5px rgba(227, 162, 95, 0); }
+}
+
+.alert-title { color: var(--starlight); }
+.alert-meta { display: block; color: var(--muted); font-size: 0.8rem; margin-top: 0.1rem; }
+.alert-table tbody tr.resolved-row td { opacity: 0.72; }
+.tg-cell { color: var(--muted); width: 1.5rem; }
+.tg-cell svg { display: block; }
+
+.head-badges { display: flex; align-items: center; gap: 0.75rem; }
+
+.alert-timeline { width: 100%; height: auto; display: block; overflow: visible; }
+.alert-timeline .tl-line { stroke: var(--line-strong); stroke-width: 2; }
+.alert-timeline .tl-open { stroke-dasharray: 3 5; }
+.alert-timeline .tl-dot { stroke: var(--space); stroke-width: 1.5; }
+.alert-timeline .tl-tick { fill: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.alert-timeline + .facts { margin-top: 1rem; }
+
+.operator { margin-bottom: 0.75rem; }
+.operator input {
+  font: inherit;
+  color: var(--text);
+  background: rgba(13, 19, 36, 0.8);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 0.4rem 0.75rem;
+  max-width: 240px;
+}
+.operator input::placeholder { color: var(--faint); }
+.action-ack:hover:not(:disabled) { color: var(--nebula); }
+.action-resolve:hover:not(:disabled) { color: var(--healthy); }
+
+.events { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+.events li { display: grid; grid-template-columns: auto 1fr; gap: 0.75rem; align-items: baseline; position: relative; padding-left: 1rem; }
+.events li::before { content: ''; position: absolute; left: 0; top: 0.5em; width: 7px; height: 7px; border-radius: 50%; background: var(--dot); }
+.event-time { color: var(--muted); font-size: 0.82rem; }
+
+.tg-line { margin-top: 0.9rem; }
+.tg { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--muted); }
+.tg-sent { color: var(--healthy); }
+
+.alert-anomalies { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
+.alert-anomalies a {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.alert-anomalies a:hover { background: rgba(196, 204, 230, 0.05); }
+.alert-anomalies .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .status-open::before { animation: none; }
+}
