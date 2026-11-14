@@ -1,0 +1,37 @@
+/* Overview charts: heatmap, legends, chart panels. */
+.chart-panel { margin-top: 2rem; }
+.chart-panel .lead { margin: -0.5rem 0 1rem; font-size: 0.9rem; }
+.chart-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; margin-top: 1.5rem; }
+.chart-pair .chart-panel { margin-top: 0; }
+
+.heatmap svg { width: 100%; height: auto; display: block; }
+.heatmap .hm-label { fill: var(--text); font-size: 12px; }
+.heatmap .hm-tick { fill: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.heatmap rect { transition: opacity 0.2s ease; }
+.heatmap rect:hover { stroke: var(--starlight); stroke-width: 1; }
+
+.hm-legend { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.9rem; font-size: 0.8rem; color: var(--muted); }
+.hm-ramp {
+  width: 180px;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #172038 0%, #34426a 48%, #d9c47f 52%, #e3a25f 75%, #dd6e62 100%);
+}
+
+.series-legend { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; margin-top: 0.6rem; font-size: 0.8rem; color: var(--muted); }
+.series-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  margin: 0 0.4rem 0.2rem 0;
+  vertical-align: middle;
+  background: var(--dot);
+}
+
+@media (max-width: 1100px) {
+  .chart-pair { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .heatmap rect { transition: none; }
+}

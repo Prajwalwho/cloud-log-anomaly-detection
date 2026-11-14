@@ -4,7 +4,8 @@ Statistics and alert endpoints against the running stack, with their own test da
 
 Data: payment-service 3 windows (100 logs; errors 0/40/0), api-gateway 3 windows (200 logs; errors 0/10/0),
 one anomaly each in minute 1 (payment CRITICAL, gateway HIGH); two alerts (payment OPEN, gateway ACKNOWLEDGED),
-the payment anomaly belongs to the payment alert.
+the payment anomaly belongs to the payment alert. Plus one IDLE window for order-service (0 logs, not flagged,
+score 0.95), which statistics must ignore (Day 34).
 """
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -66,6 +67,11 @@ def data():
                          start + timedelta(seconds=66), start, start + timedelta(minutes=1), severity,
                          Jsonb({"reasons": ["test"]})))
                     anomaly_ids.append(anomaly_id)
+        # Idle window: no logs, not flagged, high model score (what the detector stores when there is no traffic).
+        window_ids.append(conn.execute(
+            "INSERT INTO detection_windows (service_id, model_id, window_start, window_end, log_count, "
+            "anomaly_score, is_anomaly) VALUES (%s, %s, %s, %s, 0, 0.95, FALSE) RETURNING id",
+            (services["order-service"], model[0], T0, T0 + timedelta(minutes=1))).fetchone()[0])
 
     yield {"alerts": {k: str(v) for k, v in alert_ids.items()}}
 
@@ -90,6 +96,16 @@ def test_summary(client):
     payment = next(s for s in body["by_service"] if s["service"] == "payment-service")
     assert payment["anomalies"] == 1 and payment["error_rate"] == pytest.approx(40 / 300)
     assert body["open_alerts"] >= 1
+
+
+def test_idle_windows_are_ignored(client):
+    body = client.get("/api/v1/stats/summary", params=RANGE).json()
+    assert "order-service" not in {s["service"] for s in body["by_service"]}       # only an idle window
+    score = client.get("/api/v1/stats/timeseries",
+                       params={**RANGE, "metric": "anomaly_score", "interval": "1m"}).json()
+    assert "order-service" not in {s["service"] for s in score["series"]}          # its 0.95 is not shown
+    payment = next(s for s in score["series"] if s["service"] == "payment-service")
+    assert max(p["v"] for p in payment["points"]) == pytest.approx(0.9)
 
 
 def test_timeseries_per_minute(client):

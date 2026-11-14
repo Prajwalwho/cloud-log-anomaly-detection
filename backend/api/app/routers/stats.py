@@ -4,6 +4,11 @@ GET /stats/summary and GET /stats/timeseries (api-contracts.md §3.11, §3.12), 
 Windows hold one row per service and minute, so these queries stay fast regardless of log volume.
 Assumption: one model scored each period (we always run one at a time); two models scoring the same period
 would be counted twice.
+
+Idle windows are excluded (Day 34): when no service had traffic, the detection service still stores a window per
+service, with log_count 0, is_anomaly false and a high model score (an empty window is far from normal). Those
+minutes say nothing about anomalies but made every idle minute look anomalous in the heatmap. A window that is empty
+AND flagged (a silent service while others had traffic) is a real anomaly and is kept.
 """
 from __future__ import annotations
 
@@ -17,6 +22,7 @@ from ..schemas import SummaryOut, TimeseriesOut
 router = APIRouter(tags=["statistics"])
 
 SEVERITIES = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+ACTIVE = "NOT (w.log_count = 0 AND NOT w.is_anomaly)"      # excludes idle (no-traffic) windows
 # Aggregation per bucket (api-contracts.md §3.12)
 METRICS = {
     "log_count": "SUM(w.log_count)::float",
@@ -35,15 +41,15 @@ def summary(request: Request, window: tuple = Depends(time_range)) -> dict:
     params = {"start": start, "end": end}
     with request.app.state.pool.connection() as conn:
         totals = conn.execute(
-            "SELECT COALESCE(SUM(log_count), 0) AS logs, COALESCE(SUM(error_count), 0) AS errors, "
-            "COUNT(*) AS windows FROM detection_windows "
-            "WHERE window_start >= %(start)s AND window_start < %(end)s", params).fetchone()
+            "SELECT COALESCE(SUM(w.log_count), 0) AS logs, COALESCE(SUM(w.error_count), 0) AS errors, "
+            "COUNT(*) AS windows FROM detection_windows w "
+            f"WHERE w.window_start >= %(start)s AND w.window_start < %(end)s AND {ACTIVE}", params).fetchone()
         severities = conn.execute(
             "SELECT severity, COUNT(*) AS n FROM anomalies "
             "WHERE window_start >= %(start)s AND window_start < %(end)s GROUP BY severity", params).fetchall()
         open_alerts = conn.execute("SELECT COUNT(*) AS n FROM alerts WHERE status = 'OPEN'").fetchone()["n"]
         per_service = conn.execute(
-            """
+            f"""
             SELECT s.name AS service,
                    COALESCE(SUM(w.log_count), 0) AS logs,
                    COALESCE(SUM(w.error_count), 0) AS errors,
@@ -52,7 +58,7 @@ def summary(request: Request, window: tuple = Depends(time_range)) -> dict:
                      AS anomalies
             FROM services s
             JOIN detection_windows w
-              ON w.service_id = s.id AND w.window_start >= %(start)s AND w.window_start < %(end)s
+              ON w.service_id = s.id AND w.window_start >= %(start)s AND w.window_start < %(end)s AND {ACTIVE}
             GROUP BY s.id, s.name
             ORDER BY anomalies DESC, s.name
             """, params).fetchall()
@@ -96,7 +102,7 @@ def timeseries(
                {METRICS[metric]} AS v
         FROM detection_windows w
         JOIN services s ON s.id = w.service_id
-        WHERE w.window_start >= %(start)s AND w.window_start < %(end)s {service_filter}
+        WHERE w.window_start >= %(start)s AND w.window_start < %(end)s AND {ACTIVE} {service_filter}
         GROUP BY s.name, t
         ORDER BY s.name, t
     """

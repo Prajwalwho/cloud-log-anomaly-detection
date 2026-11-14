@@ -1,9 +1,14 @@
-// Overview. Day 33: the constellation, the readout and the live signal list. Day 34: heatmap and charts.
+// Overview: the constellation and readout (now), then the heatmap and charts (over time), then live signals.
 import { useState } from 'react'
 import { Constellation, type Star } from '../components/Constellation'
 import { SeverityBar } from '../components/SeverityBar'
 import { SeverityBadge } from '../components/SeverityBadge'
+import { ActivityHeatmap } from '../components/charts/ActivityHeatmap'
+import { AnomalyBars } from '../components/charts/AnomalyBars'
+import { ErrorRateChart } from '../components/charts/ErrorRateChart'
+import '../components/charts/charts.css'
 import { useOverview } from '../hooks/useOverview'
+import { useOverviewSeries } from '../hooks/useOverviewSeries'
 import { useLiveEvents } from '../live/context'
 import { formatCompact, formatPercent, formatTime } from '../lib/format'
 import { rangeOption, useTimeRange } from '../lib/timeRange'
@@ -20,6 +25,7 @@ function worstAlert(alerts: Alert[], service: string): Alert | null {
 export function Dashboard() {
   const { range } = useTimeRange()
   const { data, error } = useOverview()
+  const { series, error: seriesError } = useOverviewSeries()
   const [flares, setFlares] = useState<Record<string, number>>({})
   const [events, setEvents] = useState<Shown[]>([])
 
@@ -51,7 +57,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      {error && <p className="error-note">Could not load the overview: {error}</p>}
+      {(error || seriesError) && <p className="error-note">Could not load the overview: {error ?? seriesError}</p>}
 
       <div className="overview-hero">
         <div className="sky">
@@ -82,7 +88,31 @@ export function Dashboard() {
         )}
       </div>
 
-      <div className="panel signals-panel">
+      {series && (
+        <>
+          <div className="panel chart-panel">
+            <h2>Activity across services</h2>
+            <p className="lead">Each cell is one service in one time step, coloured by how unusual its logs were.
+              Hover a cell for its value.</p>
+            <ActivityHeatmap series={series.score} from={series.from} to={series.to} interval={series.interval} />
+          </div>
+
+          <div className="chart-pair">
+            <div className="panel chart-panel">
+              <h2>Error rate</h2>
+              <p className="lead">Share of log lines that were errors, per service.</p>
+              <ErrorRateChart series={series.errorRate} from={series.from} to={series.to} interval={series.interval} />
+            </div>
+            <div className="panel chart-panel">
+              <h2>When anomalies happened</h2>
+              <p className="lead">Anomalous minutes per time step, stacked by service.</p>
+              <AnomalyBars series={series.anomalies} from={series.from} to={series.to} interval={series.interval} />
+            </div>
+          </div>
+        </>
+      )}
+
+      <div className="panel chart-panel">
         <h2>Live signals</h2>
         {events.length === 0 ? (
           <p className="muted">Quiet so far. New anomalies and alerts appear here the moment they are detected.</p>
