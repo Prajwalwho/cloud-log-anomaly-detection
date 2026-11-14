@@ -66,8 +66,11 @@ export function Layout() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-name">Observatory</div>
-          <div className="brand-sub">Cloud log anomaly detection</div>
+          <span className="brand-mark" aria-hidden="true" />
+          <div>
+            <div className="brand-name">Observatory</div>
+            <div className="brand-sub">Cloud log anomaly detection</div>
+          </div>
         </div>
         <nav aria-label="Main">
           {NAV.map(({ to, label, icon: Icon }) => (

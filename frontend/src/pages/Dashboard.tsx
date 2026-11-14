@@ -1,4 +1,4 @@
-// Overview: the constellation and readout (now), then the heatmap and charts (over time), then live signals.
+// Overview: the galaxy of services and the readout (now), then the heatmap and charts (over time), then live signals.
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Constellation, type Star } from '../components/Constellation'
@@ -54,7 +54,7 @@ export function Dashboard() {
       <div className="page-head">
         <div>
           <h1>Overview</h1>
-          <p className="lead">Your services over the last {phrase}. Bigger stars log more; warmer colours need attention.</p>
+          <p className="lead">Your services over the last {phrase}. Bigger planets log more; warmer colours need attention.</p>
         </div>
       </div>
 
@@ -63,7 +63,10 @@ export function Dashboard() {
       <div className="overview-hero">
         <div className="sky">
           {data ? <Constellation stars={stars} /> : <p className="muted">Loading the sky…</p>}
-          <p className="sky-caption">Select a star to see that service's anomalies.</p>
+          <p className="sky-caption">
+            The API gateway receives every request; the other services orbit it, and the moving dots are requests
+            flowing to them. Point at a service to pause, click it to see its anomalies.
+          </p>
         </div>
 
         {data && (

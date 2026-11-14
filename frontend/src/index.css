@@ -41,7 +41,7 @@ body {
     var(--space);
 }
 
-/* Static starfield: two layers with different tile sizes, so the pattern does not visibly repeat. */
+/* Starfield: two layers with different tile sizes, so the pattern does not visibly repeat; one twinkles, one drifts. */
 body::before,
 body::after {
   content: '';
@@ -51,6 +51,7 @@ body::after {
   pointer-events: none;
 }
 body::before {
+  animation: twinkle 9s ease-in-out infinite alternate;
   background-image:
     radial-gradient(1px 1px at 23px 41px, rgba(236, 233, 244, 0.55), transparent 60%),
     radial-gradient(1px 1px at 141px 87px, rgba(236, 233, 244, 0.32), transparent 60%),
@@ -60,6 +61,8 @@ body::before {
   background-size: 300px 300px;
 }
 body::after {
+  inset: -470px;                 /* larger than the screen, so drifting by one tile never shows an edge */
+  animation: drift 360s linear infinite;
   background-image:
     radial-gradient(1px 1px at 61px 311px, rgba(236, 233, 244, 0.35), transparent 60%),
     radial-gradient(1.6px 1.6px at 389px 127px, rgba(217, 196, 127, 0.35), transparent 60%),
@@ -209,17 +212,22 @@ tbody tr:hover { background: rgba(196, 204, 230, 0.03); }
 
 .signals-panel { margin-top: 2rem; }
 
-/* ---------- constellation ---------- */
+/* ---------- galaxy (Overview) ---------- */
 .constellation { width: 100%; height: auto; display: block; overflow: visible; }
-.constellation .link { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 2 6; }
+.constellation .galaxy-spin { transform-box: view-box; animation: galaxy-spin 240s linear infinite; }
+.constellation .arm-star { fill: #e9e3f5; }
+.constellation .core-glow { pointer-events: none; transform-box: fill-box; transform-origin: center; animation: core-pulse 7s ease-in-out infinite; }
+.constellation .orbit { fill: none; stroke: rgba(196, 204, 230, 0.16); stroke-width: 1; stroke-dasharray: 1 5; }
+.constellation .link { stroke: rgba(196, 204, 230, 0.12); stroke-width: 1; stroke-dasharray: 2 6; }
+.constellation .packet { pointer-events: none; }
 .constellation .star { cursor: pointer; outline: none; }
 .constellation .star:focus-visible .star-core { stroke: var(--nebula); stroke-width: 2; }
 .constellation .star-core { transition: fill 0.6s ease; }
 .constellation .star:hover .star-name { fill: var(--nebula); }
 .constellation .star-quiet { opacity: 0.45; }
-.constellation .star-name { fill: var(--starlight); font-size: 13px; font-weight: 500; text-anchor: middle; }
-.constellation .star-meta { fill: var(--muted); font-size: 11px; text-anchor: middle; font-variant-numeric: tabular-nums; }
-.constellation .star-alert { font-size: 11px; text-anchor: middle; }
+.constellation .star-name { fill: var(--starlight); font-size: 13px; font-weight: 500; text-anchor: middle; paint-order: stroke; stroke: rgba(7, 11, 22, 0.85); stroke-width: 3px; }
+.constellation .star-meta { fill: var(--muted); font-size: 11px; text-anchor: middle; font-variant-numeric: tabular-nums; paint-order: stroke; stroke: rgba(7, 11, 22, 0.85); stroke-width: 3px; }
+.constellation .star-alert { font-size: 11px; text-anchor: middle; paint-order: stroke; stroke: rgba(7, 11, 22, 0.85); stroke-width: 3px; }
 .constellation .flare {
   fill: none;
   stroke-width: 1.5;
@@ -232,11 +240,114 @@ tbody tr:hover { background: rgba(196, 204, 230, 0.03); }
   from { transform: scale(1); opacity: 0.9; }
   to { transform: scale(4.5); opacity: 0; }
 }
+@keyframes galaxy-spin { to { transform: rotate(-360deg); } }
+@keyframes core-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.18); opacity: 1; }
+}
+
+/* ---------- quiet motion everywhere ---------- */
+@keyframes twinkle {
+  0% { opacity: 0.55; }
+  100% { opacity: 1; }
+}
+@keyframes drift { to { transform: translate3d(470px, 470px, 0); } }
+
+/* A slow nebula drifting behind every page. */
+.app { position: relative; isolation: isolate; }
+.app::before {
+  content: '';
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(40% 30% at 70% 30%, rgba(154, 139, 208, 0.07), transparent 70%),
+    radial-gradient(35% 28% at 25% 75%, rgba(111, 183, 168, 0.05), transparent 70%);
+  animation: nebula 80s ease-in-out infinite alternate;
+}
+@keyframes nebula {
+  from { transform: translate3d(-3%, -2%, 0) rotate(0deg); }
+  to { transform: translate3d(3%, 2%, 0) rotate(8deg); }
+}
+
+/* Now and then a shooting star crosses the sky (visible for about a second every 23 s). */
+.app::after {
+  content: '';
+  position: fixed;
+  top: 12%;
+  left: -10%;
+  width: 140px;
+  height: 1px;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(236, 233, 244, 0.85));
+  transform: rotate(18deg);
+  opacity: 0;
+  animation: shooting-star 23s linear infinite 6s;
+}
+@keyframes shooting-star {
+  0% { transform: translate3d(0, 0, 0) rotate(18deg); opacity: 0; }
+  1% { opacity: 1; }
+  5% { transform: translate3d(70vw, 23vw, 0) rotate(18deg); opacity: 0; }
+  100% { transform: translate3d(70vw, 23vw, 0) rotate(18deg); opacity: 0; }
+}
+
+/* The brand mark: a small planet with a moon in orbit. */
+.brand { display: flex; align-items: center; gap: 0.75rem; }
+.brand-mark { position: relative; width: 30px; height: 30px; flex-shrink: 0; }
+.brand-mark::before {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f1e6c8, #d9c47f 45%, #9a8bd0 100%);
+  box-shadow: 0 0 12px rgba(217, 196, 127, 0.45);
+}
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px dashed rgba(196, 204, 230, 0.25);
+  background: radial-gradient(circle at 50% 0, var(--healthy) 0 2.5px, transparent 3px);
+  animation: moon 9s linear infinite;
+}
+@keyframes moon { to { transform: rotate(360deg); } }
+
+/* Pages and their panels rise into place when opened. */
+.content > section > * { animation: rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.content > section > :nth-child(2) { animation-delay: 0.06s; }
+.content > section > :nth-child(3) { animation-delay: 0.12s; }
+.content > section > :nth-child(4) { animation-delay: 0.18s; }
+.content > section > :nth-child(n + 5) { animation-delay: 0.24s; }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The active navigation item carries a soft moving sheen. */
+.sidebar nav a.active {
+  background: linear-gradient(100deg, rgba(154, 139, 208, 0.1) 30%, rgba(154, 139, 208, 0.22) 50%, rgba(154, 139, 208, 0.1) 70%);
+  background-size: 250% 100%;
+  animation: sheen 6s ease-in-out infinite;
+}
+@keyframes sheen {
+  0%, 100% { background-position: 100% 0; }
+  50% { background-position: 0 0; }
+}
+
+/* Panels lift slightly on hover. */
+.panel { transition: border-color 0.3s ease, box-shadow 0.3s ease; }
+.panel:hover { border-color: var(--line-strong); box-shadow: 0 0 0 1px rgba(154, 139, 208, 0.06), 0 12px 40px -24px rgba(154, 139, 208, 0.35); }
 
 @media (prefers-reduced-motion: reduce) {
-  .indicator.live::before, .constellation .flare { animation: none; }
+  body::before, body::after, .app::before, .brand-mark::after, .sidebar nav a.active,
+  .content > section > *, .indicator.live::before, .constellation .flare,
+  .constellation .galaxy-spin, .constellation .core-glow { animation: none; }
+  .app::after { display: none; }
   .constellation .flare { opacity: 0; }
-  .constellation .star-core { transition: none; }
+  .constellation .star-core, .panel { transition: none; }
 }
 
 /* ---------- small screens ---------- */
