@@ -36,3 +36,7 @@ class OffsetTracker:
     @property
     def pending(self) -> int:
         return sum(len(q) for q in self._pending.values())
+
+    def clear(self) -> None:
+        """Forget every pending offset (after the partitions were revoked or lost; they are read again)."""
+        self._pending.clear()

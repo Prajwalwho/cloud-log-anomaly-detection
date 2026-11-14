@@ -4,7 +4,8 @@ Alerting service (Phase 8): anomalies.detected -> alerts in PostgreSQL -> alerts
 - Consumer group alerting-group; a NEW group starts at the end of the topic (old and test messages are skipped);
   after that, committed offsets let it resume where it stopped.
 - Offsets are committed after the alerts are stored and their events published. A crash before that replays the
-  messages, which is safe: an anomaly that already has an alert is skipped ("duplicate").
+  messages, which is safe: an anomaly that already has an alert is skipped ("duplicate"). The same holds when the
+  group membership is lost after a long pause: the commit is skipped with a warning (common/kafka_commit.py).
 - Every created/updated/resolved alert is published to alerts.events; the API forwards it to /ws/live.
 - Every alert_resolve_check_s, alerts without anomalies for alert_resolve_after_s are resolved.
 - Telegram (rules.notification_kind): one message when an alert reaches HIGH, one when a notified alert becomes
@@ -30,6 +31,7 @@ from collections import Counter
 import psycopg
 from confluent_kafka import Consumer, Producer
 
+from ..common.kafka_commit import commit_safely
 from ..common.kafka_topics import ensure_topics
 from .config import AlertingSettings
 from .notifier import TelegramNotifier, format_message
@@ -125,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
                           f"{settings.alert_min_severity}")
             if messages:
                 producer.flush(10)
-                consumer.commit(asynchronous=False)
+                commit_safely(consumer, label="alerting")
                 last_message = time.monotonic()
 
             if time.monotonic() >= next_resolve:

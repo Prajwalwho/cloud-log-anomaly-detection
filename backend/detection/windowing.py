@@ -127,3 +127,11 @@ class WindowAggregator:
     @property
     def open_windows(self) -> int:
         return len(self._open)
+
+    def discard_open(self) -> int:
+        """Forget the open windows (their events will be read again from Kafka). Closed windows stay closed, so
+        replayed events of windows that were already written are counted as late and dropped. Returns how many
+        windows were discarded."""
+        count = len(self._open)
+        self._open.clear()
+        return count

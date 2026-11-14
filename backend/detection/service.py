@@ -18,6 +18,12 @@ Delivery: offsets are committed only for events whose windows are closed and wri
 restart replays the open windows instead of losing them. Storing is idempotent (store.py). Anomalies are
 published after they are stored; PostgreSQL is the source of truth.
 
+Lost or revoked partitions (e.g. after the computer slept longer than the group session timeout, Day 40): Kafka
+delivers the uncommitted events again, which would count them twice in the still-open windows. The service
+therefore discards its open windows and pending offsets when partitions are revoked or lost and rebuilds them
+from the replay; closed windows stay closed (replayed events for them are dropped as late). A commit that fails
+for the same reason is reported and skipped (common/kafka_commit.py).
+
 The first window after start-up is partial (it began before the first event was read) and is not scored.
 Minutes without any traffic are stored without anomalies, not printed, and reported once.
 
@@ -36,6 +42,7 @@ from pathlib import Path
 
 from confluent_kafka import Consumer, KafkaException, TopicPartition
 
+from ..common.kafka_commit import commit_safely
 from .config import DetectionSettings
 from .offsets import OffsetTracker
 from .package import load_package
@@ -104,13 +111,26 @@ def main(argv: list[str] | None = None) -> int:
         if topic not in topics:
             print(f"[FAIL] Topic {topic} missing. Start the stack: .\\scripts\\start.ps1 up")
             return 1
-    consumer.subscribe([settings.kafka_topic_logs])
     publisher = AnomalyPublisher(settings.kafka_bootstrap_servers, settings.kafka_topic_anomalies)
 
     aggregator = WindowAggregator(settings.window_s, services=settings.service_list)
     tracker = OffsetTracker()
     watermark = PartitionWatermark()
     next_offset: dict[tuple[str, int], int] = {}
+
+    stopping = False
+
+    def forget_open_state(_consumer: Consumer, partitions: list[TopicPartition]) -> None:
+        """Partitions revoked or lost: their uncommitted events come again, so drop what was built from them."""
+        if not partitions or stopping:          # on shutdown the open windows are simply replayed after a restart
+            return
+        discarded = aggregator.discard_open()
+        tracker.clear()
+        next_offset.clear()
+        if discarded:
+            print(f"  [WARN] partitions revoked or lost; {discarded} open windows discarded and rebuilt from Kafka")
+
+    consumer.subscribe([settings.kafka_topic_logs], on_revoke=forget_open_state, on_lost=forget_open_state)
     grace = timedelta(seconds=settings.grace_s)
     first_event: float | None = None
     last_message = time.monotonic()
@@ -168,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
                     anomalies_created += len(created)
                     offsets = tracker.committable(aggregator.closed_before)
                     if offsets:
-                        consumer.commit(offsets=offsets, asynchronous=False)
+                        commit_safely(consumer, offsets, label="detection")
 
                     idle_set = set(idle_minutes)
                     for start in sorted({r.window.start for r in results} - idle_set):
@@ -192,6 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        stopping = True
         consumer.close()   # open windows are not committed: they are replayed after a restart
 
     print(f"\nEvents {events:,} (invalid {invalid}, future {future}, late {aggregator.late_events}); "

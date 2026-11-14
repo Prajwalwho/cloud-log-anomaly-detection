@@ -8,6 +8,10 @@ been written to the sink and every dead-letter message is confirmed by Kafka. A 
 can therefore cause a batch to be processed twice, but never lost. The Elasticsearch
 sink uses event_id as the document id, so processing twice is harmless.
 
+After a long pause (e.g. the computer slept) the consumer may have lost its group membership;
+the commit then fails, the service logs a warning, rejoins and receives the batch again
+(common/kafka_commit.py) instead of crashing (Day 40).
+
 Usage (run from the project root):
     python -m backend.ingestion.consumer
     python -m backend.ingestion.consumer --idle-exit 10
@@ -26,6 +30,7 @@ from typing import Protocol
 
 from confluent_kafka import Consumer, KafkaError, Message, Producer
 
+from ..common.kafka_commit import commit_safely
 from .config import IngestionSettings
 from .config import settings as default_settings
 from .es_sink import ElasticsearchSink
@@ -145,10 +150,11 @@ class IngestionConsumer:
         if undelivered or self._deadletter_failures:
             raise RuntimeError("Dead-letter messages could not be delivered; offsets not committed")
 
-        # 3. Only now mark the batch as done
-        self.consumer.commit(asynchronous=False)
-        self.stats.valid += stored
-        self.stats.batches += 1
+        # 3. Only now mark the batch as done. If the group membership was lost meanwhile, the batch is delivered
+        #    again after rejoining; writing it twice is harmless (event_id is the document id).
+        if commit_safely(self.consumer, label="ingestion"):
+            self.stats.valid += stored
+            self.stats.batches += 1
 
     def _send_to_deadletter(self, msg: Message, error: str) -> None:
         record = build_deadletter_record(msg.value(), msg.topic(), msg.partition(), msg.offset(), error)
