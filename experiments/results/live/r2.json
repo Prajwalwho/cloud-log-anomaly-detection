@@ -1,0 +1,223 @@
+{
+  "kind": "fault_run",
+  "label": "r2",
+  "ground_truth": "data\\ground_truth\\eval-r2.jsonl",
+  "run_id": "run-20261114-195809",
+  "model": "live-pca 1.1.0",
+  "evaluated_at": "2026-11-14T21:34:25.974121+00:00",
+  "margin_s": 120.0,
+  "alert_tail_s": 240.0,
+  "summary": {
+    "incidents": 5,
+    "incidents_detected": 5,
+    "incidents_alerted": 5,
+    "mean_delay_s": 55.72,
+    "mean_alert_delay_s": 55.72,
+    "anomalies_in_incidents": 36,
+    "alerts_in_incidents": 12,
+    "alerts_notified": 10,
+    "alerts_outside_incidents": 0,
+    "alerts_outside_incidents_list": []
+  },
+  "window_level": {
+    "windows": 190,
+    "faulty_windows": 22,
+    "flagged_windows": 37,
+    "precision": 0.5405405405405406,
+    "recall": 0.9090909090909091,
+    "f1": 0.6779661016949153,
+    "full_window_recall": 1.0,
+    "incident_precision": 1.0,
+    "quiet_windows": 10,
+    "quiet_false_alarms": 0,
+    "quiet_false_alarm_rate": 0.0,
+    "quiet_false_alarm_severities": {},
+    "quiet_false_alarm_list": []
+  },
+  "per_incident": [
+    {
+      "scenario": "latency_spike",
+      "faulty_services": [
+        "order-service"
+      ],
+      "detected": true,
+      "delay_s": 55.8,
+      "first_service": "api-gateway",
+      "anomalies": 4,
+      "worst_severity": "HIGH",
+      "alerts": 2,
+      "alert_services": [
+        "api-gateway",
+        "order-service"
+      ],
+      "alert_delay_s": 55.8,
+      "alerts_notified": 1,
+      "resolved_after_end_s": 323.3
+    },
+    {
+      "scenario": "new_error",
+      "faulty_services": [
+        "inventory-service"
+      ],
+      "detected": true,
+      "delay_s": 55.6,
+      "first_service": "api-gateway",
+      "anomalies": 6,
+      "worst_severity": "HIGH",
+      "alerts": 2,
+      "alert_services": [
+        "api-gateway",
+        "inventory-service"
+      ],
+      "alert_delay_s": 55.6,
+      "alerts_notified": 2,
+      "resolved_after_end_s": 583.15
+    },
+    {
+      "scenario": "silent_service",
+      "faulty_services": [
+        "auth-service"
+      ],
+      "detected": true,
+      "delay_s": 55.5,
+      "first_service": "api-gateway",
+      "anomalies": 8,
+      "worst_severity": "CRITICAL",
+      "alerts": 3,
+      "alert_services": [
+        "auth-service",
+        "order-service",
+        "payment-service"
+      ],
+      "alert_delay_s": 55.5,
+      "alerts_notified": 3,
+      "resolved_after_end_s": 314.3
+    },
+    {
+      "scenario": "cascading_failure",
+      "faulty_services": [
+        "inventory-service",
+        "order-service",
+        "payment-service"
+      ],
+      "detected": true,
+      "delay_s": 55.8,
+      "first_service": "order-service",
+      "anomalies": 12,
+      "worst_severity": "CRITICAL",
+      "alerts": 4,
+      "alert_services": [
+        "api-gateway",
+        "inventory-service",
+        "order-service",
+        "payment-service"
+      ],
+      "alert_delay_s": 55.8,
+      "alerts_notified": 3,
+      "resolved_after_end_s": 383.9
+    },
+    {
+      "scenario": "error_burst",
+      "faulty_services": [
+        "payment-service"
+      ],
+      "detected": true,
+      "delay_s": 55.9,
+      "first_service": "api-gateway",
+      "anomalies": 6,
+      "worst_severity": "CRITICAL",
+      "alerts": 1,
+      "alert_services": [
+        "payment-service"
+      ],
+      "alert_delay_s": 55.9,
+      "alerts_notified": 1,
+      "resolved_after_end_s": 359.3
+    }
+  ],
+  "per_fault": [
+    {
+      "scenario": "latency_spike",
+      "service": "order-service",
+      "windows": 3,
+      "flagged": 3,
+      "delay_s": 55.8,
+      "severities": [
+        "HIGH",
+        "HIGH",
+        "MEDIUM"
+      ]
+    },
+    {
+      "scenario": "new_error",
+      "service": "inventory-service",
+      "windows": 3,
+      "flagged": 3,
+      "delay_s": 55.6,
+      "severities": [
+        "HIGH",
+        "HIGH",
+        "MEDIUM"
+      ]
+    },
+    {
+      "scenario": "silent_service",
+      "service": "auth-service",
+      "windows": 3,
+      "flagged": 2,
+      "delay_s": 55.5,
+      "severities": [
+        "HIGH",
+        "CRITICAL"
+      ]
+    },
+    {
+      "scenario": "cascading_failure",
+      "service": "order-service",
+      "windows": 4,
+      "flagged": 4,
+      "delay_s": 55.8,
+      "severities": [
+        "MEDIUM",
+        "MEDIUM",
+        "MEDIUM",
+        "LOW"
+      ]
+    },
+    {
+      "scenario": "cascading_failure",
+      "service": "payment-service",
+      "windows": 3,
+      "flagged": 2,
+      "delay_s": 56.2,
+      "severities": [
+        "CRITICAL",
+        "CRITICAL"
+      ]
+    },
+    {
+      "scenario": "cascading_failure",
+      "service": "inventory-service",
+      "windows": 3,
+      "flagged": 3,
+      "delay_s": 26.2,
+      "severities": [
+        "HIGH",
+        "HIGH",
+        "MEDIUM"
+      ]
+    },
+    {
+      "scenario": "error_burst",
+      "service": "payment-service",
+      "windows": 3,
+      "flagged": 3,
+      "delay_s": 55.9,
+      "severities": [
+        "CRITICAL",
+        "CRITICAL",
+        "HIGH"
+      ]
+    }
+  ]
+}

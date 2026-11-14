@@ -1,0 +1,29 @@
+{
+  "kind": "normal_run",
+  "label": "n1",
+  "from": "2026-11-14T22:17:00+00:00",
+  "to": "2026-11-14T23:14:00+00:00",
+  "model": "live-pca 1.1.0",
+  "evaluated_at": "2026-11-14T23:23:02.022751+00:00",
+  "windows": 285,
+  "false_alarms": 1,
+  "false_alarm_rate": 0.0035087719298245615,
+  "false_alarm_severities": {
+    "LOW": 1
+  },
+  "false_alarms_per_service": {
+    "api-gateway": 1
+  },
+  "false_alarm_list": [
+    {
+      "service": "api-gateway",
+      "start": "2026-11-14T22:18:00+00:00",
+      "severity": "LOW",
+      "reasons": [
+        "unusual log pattern (no single signal above its limit)"
+      ]
+    }
+  ],
+  "alerts": 0,
+  "alerts_notified": 0
+}

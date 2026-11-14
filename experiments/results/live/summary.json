@@ -1,0 +1,284 @@
+{
+  "overall": {
+    "runs": 3,
+    "incident_detection_rate": {
+      "n": 3,
+      "mean": 1.0,
+      "std": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "mean_delay_s": {
+      "n": 3,
+      "mean": 52.28666666666667,
+      "std": 6.81305609351144,
+      "min": 44.44,
+      "max": 56.7
+    },
+    "mean_alert_delay_s": {
+      "n": 3,
+      "mean": 52.28666666666667,
+      "std": 6.81305609351144,
+      "min": 44.44,
+      "max": 56.7
+    },
+    "precision": {
+      "n": 3,
+      "mean": 0.5450406071095726,
+      "std": 0.005902867926219818,
+      "min": 0.5405405405405406,
+      "max": 0.5517241379310345
+    },
+    "recall": {
+      "n": 3,
+      "mean": 0.8448773448773449,
+      "std": 0.07536488618366288,
+      "min": 0.7619047619047619,
+      "max": 0.9090909090909091
+    },
+    "f1": {
+      "n": 3,
+      "mean": 0.6615442561205274,
+      "std": 0.019494500168754324,
+      "min": 0.64,
+      "max": 0.6779661016949153
+    },
+    "full_window_recall": {
+      "n": 3,
+      "mean": 1.0,
+      "std": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "incident_precision": {
+      "n": 3,
+      "mean": 1.0,
+      "std": 0.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "quiet_false_alarm_rate": {
+      "n": 3,
+      "mean": 0.0,
+      "std": 0.0,
+      "min": 0.0,
+      "max": 0.0
+    },
+    "anomalies_per_incident": {
+      "n": 3,
+      "mean": 6.666666666666667,
+      "std": 0.7571877794400367,
+      "min": 5.8,
+      "max": 7.2
+    },
+    "alerts_per_incident": {
+      "n": 3,
+      "mean": 2.533333333333333,
+      "std": 0.11547005383792526,
+      "min": 2.4,
+      "max": 2.6
+    },
+    "alerts_outside_incidents": {
+      "n": 3,
+      "mean": 0,
+      "std": 0.0,
+      "min": 0,
+      "max": 0
+    }
+  },
+  "per_scenario": {
+    "error_burst": {
+      "runs": 3,
+      "detected": 3,
+      "delay_s": {
+        "n": 3,
+        "mean": 60.36666666666667,
+        "std": 7.1388607868015805,
+        "min": 55.9,
+        "max": 68.6
+      },
+      "alert_delay_s": {
+        "n": 3,
+        "mean": 60.36666666666667,
+        "std": 7.1388607868015805,
+        "min": 55.9,
+        "max": 68.6
+      },
+      "anomalies": {
+        "n": 3,
+        "mean": 4.666666666666667,
+        "std": 1.1547005383792515,
+        "min": 4,
+        "max": 6
+      },
+      "alerts": {
+        "n": 3,
+        "mean": 1.6666666666666667,
+        "std": 0.5773502691896257,
+        "min": 1,
+        "max": 2
+      },
+      "worst_severities": {
+        "CRITICAL": 3
+      }
+    },
+    "latency_spike": {
+      "runs": 3,
+      "detected": 3,
+      "delay_s": {
+        "n": 3,
+        "mean": 60.199999999999996,
+        "std": 6.773477688750441,
+        "min": 55.8,
+        "max": 68.0
+      },
+      "alert_delay_s": {
+        "n": 3,
+        "mean": 60.199999999999996,
+        "std": 6.773477688750441,
+        "min": 55.8,
+        "max": 68.0
+      },
+      "anomalies": {
+        "n": 3,
+        "mean": 3.3333333333333335,
+        "std": 1.1547005383792515,
+        "min": 2,
+        "max": 4
+      },
+      "alerts": {
+        "n": 3,
+        "mean": 1.3333333333333333,
+        "std": 0.5773502691896257,
+        "min": 1,
+        "max": 2
+      },
+      "worst_severities": {
+        "HIGH": 3
+      }
+    },
+    "new_error": {
+      "runs": 3,
+      "detected": 3,
+      "delay_s": {
+        "n": 3,
+        "mean": 40.03333333333333,
+        "std": 27.832774445486628,
+        "min": 7.9,
+        "max": 56.6
+      },
+      "alert_delay_s": {
+        "n": 3,
+        "mean": 40.03333333333333,
+        "std": 27.832774445486628,
+        "min": 7.9,
+        "max": 56.6
+      },
+      "anomalies": {
+        "n": 3,
+        "mean": 5.666666666666667,
+        "std": 0.5773502691896257,
+        "min": 5,
+        "max": 6
+      },
+      "alerts": {
+        "n": 3,
+        "mean": 2,
+        "std": 0.0,
+        "min": 2,
+        "max": 2
+      },
+      "worst_severities": {
+        "HIGH": 3
+      }
+    },
+    "silent_service": {
+      "runs": 3,
+      "detected": 3,
+      "delay_s": {
+        "n": 3,
+        "mean": 40.46666666666667,
+        "std": 27.172105794975355,
+        "min": 9.1,
+        "max": 56.8
+      },
+      "alert_delay_s": {
+        "n": 3,
+        "mean": 40.46666666666667,
+        "std": 27.172105794975355,
+        "min": 9.1,
+        "max": 56.8
+      },
+      "anomalies": {
+        "n": 3,
+        "mean": 8.666666666666666,
+        "std": 0.5773502691896257,
+        "min": 8,
+        "max": 9
+      },
+      "alerts": {
+        "n": 3,
+        "mean": 3.6666666666666665,
+        "std": 0.5773502691896257,
+        "min": 3,
+        "max": 4
+      },
+      "worst_severities": {
+        "CRITICAL": 3
+      }
+    },
+    "cascading_failure": {
+      "runs": 3,
+      "detected": 3,
+      "delay_s": {
+        "n": 3,
+        "mean": 60.36666666666667,
+        "std": 7.144461724534136,
+        "min": 55.8,
+        "max": 68.6
+      },
+      "alert_delay_s": {
+        "n": 3,
+        "mean": 60.36666666666667,
+        "std": 7.144461724534136,
+        "min": 55.8,
+        "max": 68.6
+      },
+      "anomalies": {
+        "n": 3,
+        "mean": 11,
+        "std": 1.7320508075688772,
+        "min": 9,
+        "max": 12
+      },
+      "alerts": {
+        "n": 3,
+        "mean": 4,
+        "std": 0.0,
+        "min": 4,
+        "max": 4
+      },
+      "worst_severities": {
+        "CRITICAL": 3
+      }
+    }
+  },
+  "normal": {
+    "runs": 1,
+    "windows": 285,
+    "false_alarms": 1,
+    "false_alarm_rate": 0.0035087719298245615,
+    "alerts": 0
+  },
+  "runs": [
+    "r1",
+    "r2",
+    "r3"
+  ],
+  "normal_runs": [
+    "n1"
+  ],
+  "models": [
+    "live-pca 1.1.0"
+  ]
+}
