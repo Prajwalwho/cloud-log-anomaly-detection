@@ -1,0 +1,241 @@
+{
+  "label": "l2",
+  "created_at": "2026-11-16T10:14:42.549472+00:00",
+  "minutes": 5.0,
+  "db_clock_offset_s": 0.003,
+  "drain_s": 0.0,
+  "steps": [
+    {
+      "rate": 20,
+      "start": "2026-11-16T09:53:14.985069+00:00",
+      "end": "2026-11-16T09:58:17.885399+00:00",
+      "events": 22365,
+      "events_per_s": 74.5,
+      "generator": {
+        "events": 22365,
+        "elapsed_s": 300.0,
+        "delivered": 22365,
+        "failed": 0,
+        "queued": 0
+      },
+      "ingest": {
+        "n": 18299,
+        "mean": 0.566,
+        "min": 0.0,
+        "p50": 0.568,
+        "p95": 1.052,
+        "p99": 1.098,
+        "max": 1.141
+      },
+      "ingestion_lag": {
+        "samples": 60,
+        "max": 129,
+        "mean": 46.1,
+        "last": 20,
+        "growing": false
+      },
+      "detect": {
+        "n": 20,
+        "mean": 5.578,
+        "min": 5.307,
+        "p50": 5.521,
+        "p95": 5.964,
+        "p99": 5.964,
+        "max": 5.964
+      },
+      "windows": 20,
+      "anomalous_windows": 13,
+      "containers": {
+        "cla-postgres": {
+          "cpu": "0.03%",
+          "memory": "44.13MiB"
+        },
+        "cla-kafka": {
+          "cpu": "14.38%",
+          "memory": "1.002GiB"
+        },
+        "cla-elasticsearch": {
+          "cpu": "2.60%",
+          "memory": "1.623GiB"
+        }
+      },
+      "keeps_up": true,
+      "reasons": [],
+      "log": "experiments\\results\\load\\l2-gen-20.log"
+    },
+    {
+      "rate": 50,
+      "start": "2026-11-16T09:58:17.900955+00:00",
+      "end": "2026-11-16T10:03:20.779279+00:00",
+      "events": 54669,
+      "events_per_s": 182.2,
+      "generator": {
+        "events": 54669,
+        "elapsed_s": 300.0,
+        "delivered": 54669,
+        "failed": 0,
+        "queued": 0
+      },
+      "ingest": {
+        "n": 44949,
+        "mean": 0.581,
+        "min": 0.012,
+        "p50": 0.58,
+        "p95": 1.055,
+        "p99": 1.107,
+        "max": 1.181
+      },
+      "ingestion_lag": {
+        "samples": 60,
+        "max": 238,
+        "mean": 103.5,
+        "last": 12,
+        "growing": false
+      },
+      "detect": {
+        "n": 20,
+        "mean": 5.515,
+        "min": 5.302,
+        "p50": 5.518,
+        "p95": 5.723,
+        "p99": 5.723,
+        "max": 5.723
+      },
+      "windows": 20,
+      "anomalous_windows": 11,
+      "containers": {
+        "cla-postgres": {
+          "cpu": "0.00%",
+          "memory": "44.16MiB"
+        },
+        "cla-kafka": {
+          "cpu": "14.08%",
+          "memory": "1.014GiB"
+        },
+        "cla-elasticsearch": {
+          "cpu": "2.04%",
+          "memory": "1.627GiB"
+        }
+      },
+      "keeps_up": true,
+      "reasons": [],
+      "log": "experiments\\results\\load\\l2-gen-50.log"
+    },
+    {
+      "rate": 100,
+      "start": "2026-11-16T10:03:20.796844+00:00",
+      "end": "2026-11-16T10:08:23.553878+00:00",
+      "events": 109623,
+      "events_per_s": 365.4,
+      "generator": {
+        "events": 109623,
+        "elapsed_s": 300.0,
+        "delivered": 109623,
+        "failed": 0,
+        "queued": 0
+      },
+      "ingest": {
+        "n": 90035,
+        "mean": 0.558,
+        "min": -0.004,
+        "p50": 0.559,
+        "p95": 1.039,
+        "p99": 1.096,
+        "max": 1.188
+      },
+      "ingestion_lag": {
+        "samples": 60,
+        "max": 503,
+        "mean": 225.4,
+        "last": 175,
+        "growing": false
+      },
+      "detect": {
+        "n": 20,
+        "mean": 5.457,
+        "min": 5.183,
+        "p50": 5.526,
+        "p95": 5.595,
+        "p99": 5.595,
+        "max": 5.595
+      },
+      "windows": 20,
+      "anomalous_windows": 18,
+      "containers": {
+        "cla-postgres": {
+          "cpu": "0.05%",
+          "memory": "44.32MiB"
+        },
+        "cla-kafka": {
+          "cpu": "12.50%",
+          "memory": "1.04GiB"
+        },
+        "cla-elasticsearch": {
+          "cpu": "62.33%",
+          "memory": "1.63GiB"
+        }
+      },
+      "keeps_up": true,
+      "reasons": [],
+      "log": "experiments\\results\\load\\l2-gen-100.log"
+    },
+    {
+      "rate": 200,
+      "start": "2026-11-16T10:08:23.583840+00:00",
+      "end": "2026-11-16T10:13:26.013421+00:00",
+      "events": 220471,
+      "events_per_s": 734.9,
+      "generator": {
+        "events": 220471,
+        "elapsed_s": 300.0,
+        "delivered": 220471,
+        "failed": 0,
+        "queued": 0
+      },
+      "ingest": {
+        "n": 180321,
+        "mean": 0.39,
+        "min": 0.006,
+        "p50": 0.385,
+        "p95": 0.712,
+        "p99": 0.806,
+        "max": 1.218
+      },
+      "ingestion_lag": {
+        "samples": 60,
+        "max": 582,
+        "mean": 326.4,
+        "last": 517,
+        "growing": false
+      },
+      "detect": {
+        "n": 20,
+        "mean": 5.523,
+        "min": 5.197,
+        "p50": 5.606,
+        "p95": 5.684,
+        "p99": 5.684,
+        "max": 5.684
+      },
+      "windows": 20,
+      "anomalous_windows": 20,
+      "containers": {
+        "cla-postgres": {
+          "cpu": "0.01%",
+          "memory": "44.35MiB"
+        },
+        "cla-kafka": {
+          "cpu": "140.96%",
+          "memory": "1.116GiB"
+        },
+        "cla-elasticsearch": {
+          "cpu": "3.46%",
+          "memory": "1.605GiB"
+        }
+      },
+      "keeps_up": true,
+      "reasons": [],
+      "log": "experiments\\results\\load\\l2-gen-200.log"
+    }
+  ]
+}
