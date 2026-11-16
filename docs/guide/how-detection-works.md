@@ -185,4 +185,5 @@ On average, a fault that shows in its first minute is found about 36 seconds aft
 
 ## Next
 
-- Back to [Concepts](concepts.md), or [Getting started](getting-started.md) to try it.
+- [Architecture](architecture.md): how the parts fit together, and why.
+- [Getting started](getting-started.md) to try it.

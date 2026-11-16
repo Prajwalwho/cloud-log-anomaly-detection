@@ -13,8 +13,9 @@ const FILES = import.meta.glob('../../../docs/guide/*.md', {
 
 export const SECTIONS: { title: string; slugs: string[] }[] = [
   { title: 'Start here', slugs: ['introduction', 'getting-started'] },
-  { title: 'Learn', slugs: ['concepts', 'how-detection-works'] },
+  { title: 'Learn', slugs: ['concepts', 'how-detection-works', 'architecture'] },
   { title: 'Use', slugs: ['using-the-dashboard', 'alerts-and-telegram', 'operations'] },
+  { title: 'Reference', slugs: ['api-reference', 'configuration', 'glossary', 'faq'] },
 ]
 
 export interface DocPage {

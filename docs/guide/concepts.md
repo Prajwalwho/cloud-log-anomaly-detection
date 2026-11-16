@@ -134,7 +134,7 @@ A named stream of messages in Kafka:
 | `logs.raw` | every log event (3 partitions) | 24 hours |
 | `logs.deadletter` | events that broke the contract | 7 days |
 | `anomalies.detected` | every anomaly, from detection to alerting and the API | 7 days |
-| `alerts.events` | every new or changed alert, from alerting to the API | Kafka's default |
+| `alerts.events` | every new or changed alert, from alerting to the API | 7 days |
 
 ### Partition and key
 

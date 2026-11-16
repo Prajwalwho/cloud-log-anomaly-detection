@@ -29,19 +29,21 @@ The five services as a small galaxy. The **API gateway**, which receives every r
 | What you see | What it means |
 |---|---|
 | Size of a planet | How many log lines the service wrote in the time range |
-| Pale colour | Healthy |
-| Yellow | Error rate of 5% or more, or an open MEDIUM alert |
-| Orange / red | An open HIGH / CRITICAL alert |
-| A ring (halo) | The service has an open alert |
+| Pale planet | Healthy |
+| Yellow | Error rate of 5% or more, or an active MEDIUM alert |
+| Orange / red | An active HIGH / CRITICAL alert |
+| A third line under the name | The title of the service's active alert |
 | A flare | A new anomaly for this service has just arrived |
 
-Point at a service to pause the motion; click it to open its anomalies. If your operating system is set to reduce motion, the galaxy stands still.
+Under each name are its log lines and error rate in the time range. The glow around a planet has the same colour as the planet.
+
+*Active* means open or acknowledged, from the last seven days. Point at a service to pause the motion; click it to open its anomalies. If your operating system is set to reduce motion, the galaxy stands still.
 
 ### The readout
 
-Four numbers next to the galaxy, for the chosen time range:
+Four numbers next to the galaxy. All but the first are for the chosen time range:
 
-- **Open alerts**: alerts not yet resolved (open or acknowledged). Click to open the Alerts page.
+- **Open alerts**: alerts with the status *open*, whatever the time range. Acknowledged alerts are not counted here: someone is already on them. Click to open the Alerts page.
 - **Anomalies**: how many minutes were flagged, with a bar showing how many of each severity.
 - **Error rate**: the share of all log lines that were errors.
 - **Log lines analysed**: how many lines the detection service judged, in how many service-minutes (windows).
@@ -95,7 +97,7 @@ Anomalies of one service that belong together, as one thing to act on. Active al
 
 - **What happened**: the title, its reasons, when it started, when its last anomaly came, how long it has been open (or how long it lasted), and the number of anomalous minutes.
 - **The story**: a timeline (*Opened as high: …*, *Escalated to critical: …*, *Acknowledged by …*, *Resolved after 5 min without new anomalies*).
-- **Telegram**: whether the operator was notified, and when.
+- **Telegram**: *Sent to Telegram*; *Not needed* (MEDIUM alerts are not sent); or *Not sent* for a HIGH or CRITICAL alert, which means Telegram is off or the message failed (see [Alerts and Telegram](alerts-and-telegram.md#setting-up-telegram)).
 - **Its anomalies**: every flagged minute that belongs to the alert, with links.
 - **Respond**: type your name (it is remembered in this browser), then **Acknowledge** ("I'm looking at it") or **Resolve** ("it's fixed").
 
@@ -129,3 +131,7 @@ Which model decides what counts as an anomaly, and how well it does.
 ## Docs
 
 These pages. Use the search box on the left, or the *On this page* list on the right to jump to a section. Every page can also be read on GitHub.
+
+## Next
+
+- [Alerts and Telegram](alerts-and-telegram.md): how alerts are formed, and how the Telegram messages work.

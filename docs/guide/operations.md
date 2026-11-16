@@ -215,5 +215,5 @@ python -m backend.log_generator.generator --kafka --scenario all --jitter 60
 
 ## Next
 
-- [Alerts and Telegram](alerts-and-telegram.md): how alerts are formed and notified.
-- [How detection works](how-detection-works.md): what the detection service does with every minute.
+- [API reference](api-reference.md): every endpoint of the backend API.
+- [Configuration](configuration.md): every setting and command-line option.

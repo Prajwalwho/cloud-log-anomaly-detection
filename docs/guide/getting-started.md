@@ -271,4 +271,6 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object Command
 
 ## Next
 
-- Go back to the [introduction](introduction.md) for what the system does and how well it works.
+- [Concepts](concepts.md): the words used on the dashboard and in these pages.
+- [Using the dashboard](using-the-dashboard.md): what every page shows.
+- [Operations](operations.md): running the system day to day, and what to do when something goes wrong.
