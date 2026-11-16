@@ -13,6 +13,7 @@ const FILES = import.meta.glob('../../../docs/guide/*.md', {
 
 export const SECTIONS: { title: string; slugs: string[] }[] = [
   { title: 'Start here', slugs: ['introduction', 'getting-started'] },
+  { title: 'Learn', slugs: ['concepts', 'how-detection-works'] },
 ]
 
 export interface DocPage {
