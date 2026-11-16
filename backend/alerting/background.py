@@ -57,9 +57,11 @@ class BackgroundSender:
         """Send what is queued (up to timeout_s), stop the worker; returns how many messages were left unsent."""
         try:
             self._queue.put(_STOP, timeout=timeout_s)
+            self._thread.join(timeout_s)
         except queue.Full:
             return self._queue.qsize()
-        self._thread.join(timeout_s)
+        except KeyboardInterrupt:                # a second Ctrl+C: stop waiting (the worker is a daemon thread)
+            pass
         return self._queue.qsize() if self._thread.is_alive() else 0
 
     def _done(self, alert_id: str) -> None:

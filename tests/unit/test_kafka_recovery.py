@@ -1,4 +1,4 @@
-"""Recovery after a lost consumer-group membership (Day 40): safe commits, and detection's open-window reset."""
+"""Recovery after a lost consumer-group membership (Day 40, 43): safe commits, and detection's state reset."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -6,6 +6,7 @@ from confluent_kafka import KafkaError, KafkaException, TopicPartition
 
 from backend.common.kafka_commit import commit_safely
 from backend.detection.offsets import OffsetTracker
+from backend.detection.watermark import PartitionWatermark
 from backend.detection.windowing import WindowAggregator
 
 
@@ -66,3 +67,18 @@ def test_offset_tracker_clear():
     tracker.clear()
     assert tracker.pending == 0
     assert tracker.committable(T0.timestamp() + 60) == []
+
+
+def test_watermark_is_reset_so_replayed_events_are_not_late():
+    # Day 43: partitions were reassigned and re-read from older offsets. The old latest event times let the
+    # watermark run ahead of the replay, so minutes closed early and replayed events were dropped as late.
+    wm = PartitionWatermark()
+    p0, p1 = ("logs.raw", 0), ("logs.raw", 1)
+    wm.update(*p0, T0 + timedelta(minutes=5))          # read before the rebalance
+    wm.update(*p1, T0 + timedelta(minutes=5))
+    assert wm.current([p0, p1], caught_up={p1}) == T0 + timedelta(minutes=5)    # stale: p0 re-read from T0
+
+    wm.clear()                                         # what the service now does on revoke / lost
+    assert wm.current([p0, p1], caught_up={p1}) is None                         # wait for p0's replay
+    wm.update(*p0, T0 + timedelta(seconds=30))
+    assert wm.current([p0, p1], caught_up={p1}) == T0 + timedelta(seconds=30)   # follows the replay

@@ -20,9 +20,9 @@ published after they are stored; PostgreSQL is the source of truth.
 
 Lost or revoked partitions (e.g. after the computer slept longer than the group session timeout, Day 40): Kafka
 delivers the uncommitted events again, which would count them twice in the still-open windows. The service
-therefore discards its open windows and pending offsets when partitions are revoked or lost and rebuilds them
-from the replay; closed windows stay closed (replayed events for them are dropped as late). A commit that fails
-for the same reason is reported and skipped (common/kafka_commit.py).
+therefore discards its open windows, pending offsets and per-partition event times (watermark) when partitions
+are revoked or lost and rebuilds them from the replay; closed windows stay closed (replayed events for them are
+dropped as late). A commit that fails for the same reason is reported and skipped (common/kafka_commit.py).
 
 The first window after start-up is partial (it began before the first event was read) and is not scored. The
 same holds for minutes in which all traffic started or stopped (edges.py, Day 43): they look like a volume drop on
@@ -137,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
         tracker.clear()
         next_offset.clear()
         bounds.clear()
+        watermark.clear()               # old event times would close the re-read minutes too early (Day 43)
         if discarded:
             print(f"  [WARN] partitions revoked or lost; {discarded} open windows discarded and rebuilt from Kafka")
 

@@ -30,6 +30,14 @@ class PartitionWatermark:
         if key not in self._latest or event_time > self._latest[key]:
             self._latest[key] = event_time
 
+    def clear(self) -> None:
+        """Forget all partitions' event times (after partitions were revoked or lost, Day 43).
+
+        The uncommitted events are read again from older offsets. Keeping the old latest times would let the
+        watermark run ahead of what has been re-read, close those minutes early and drop the replayed events as
+        late (seen on Day 43: false "no logs" for every service on the re-read partitions)."""
+        self._latest.clear()
+
     def current(self, assigned: Iterable[Key], caught_up: set[Key],
                 now_utc: datetime | None = None) -> datetime | None:
         assigned = list(assigned)
