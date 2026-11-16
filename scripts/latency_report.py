@@ -140,8 +140,11 @@ def load_faults(paths: list[Path]) -> list[list[FaultRecord]]:
     return runs
 
 
-def ingest_latency(periods: list[tuple[datetime, datetime]]) -> dict:
-    """Percentiles of (ingested_at - timestamp), computed by Elasticsearch over every log in the periods."""
+def ingest_latency(periods: list[tuple[datetime, datetime]], backlog_ms: int | None = BACKLOG_MS) -> dict:
+    """Percentiles of (ingested_at - timestamp), computed by Elasticsearch over every log in the periods.
+
+    Logs older than backlog_ms when stored are counted separately and left out; None keeps every log (load test).
+    """
     from elasticsearch import Elasticsearch
 
     es = Elasticsearch(ingestion_settings.elasticsearch_url, request_timeout=180)
@@ -151,10 +154,10 @@ def ingest_latency(periods: list[tuple[datetime, datetime]]) -> dict:
         index=f"{ingestion_settings.elasticsearch_index_prefix}-*", size=0, query=query,
         runtime_mappings=LAG_MAPPING, track_total_hits=True,
         aggs={
-            "live": {"filter": {"range": {"lag_ms": {"lt": BACKLOG_MS}}},
+            "live": {"filter": {"range": {"lag_ms": {"lt": backlog_ms}}} if backlog_ms else {"match_all": {}},
                      "aggs": {"stats": {"stats": {"field": "lag_ms"}},
                               "pct": {"percentiles": {"field": "lag_ms", "percents": [50, 95, 99]}}}},
-            "backlog": {"filter": {"range": {"lag_ms": {"gte": BACKLOG_MS}}}},
+            "backlog": {"filter": {"range": {"lag_ms": {"gte": backlog_ms}}} if backlog_ms else {"match_none": {}}},
         },
     ).body
     live, backlog = response["aggregations"]["live"], response["aggregations"]["backlog"]["doc_count"]

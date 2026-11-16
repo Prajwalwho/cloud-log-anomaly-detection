@@ -6,7 +6,8 @@ Run `live1` (16 Nov 2026, 07:13–07:42 UTC): three faults (error_burst, new_err
 98,179 events with the generator's default settings (about 60 events per second on average), all services running live
 on one laptop.
 Measured with `scripts/latency_report.py` (definitions: `backend/detection/evaluation/latency.py`).
-Raw results: `experiments/results/latency/live1.json`, `live1.md`, `feed-live1.jsonl`.
+Raw results: `experiments/results/latency/live1.json`, `live1.md`, `feed-live1.jsonl`; the stored data of the
+evaluation night (14 Nov) in `night.json`, `night.md` (§6).
 
 ---
 
@@ -58,8 +59,10 @@ messages:
 | payment-service | 2.85 s |
 
 Each step adds about 0.9 s, which is the Telegram send time. With one failing service this costs nothing; with a
-cascading failure across four services the last alert is about 3 s late. Remedy (Day 43): send Telegram messages
-from a background thread so storing and publishing alerts never waits for the network.
+cascading failure across four services the last alert is about 3 s late. On a slow connection it is much worse:
+during the evaluation night single Telegram sends took up to 10.9 s and alerts opened up to 13.6 s after their
+anomaly (§6). Remedy (Day 43): send Telegram messages from a background thread so storing and publishing alerts never
+waits for the network.
 
 ## 4. Summary for the report
 
@@ -76,3 +79,24 @@ from a background thread so storing and publishing alerts never waits for the ne
   samples (the small ones are indicative).
 - Default load (about 60 events/s). How the stages change at higher rates is the subject of the load test (Day 42).
 - Telegram time depends on the internet connection; Elasticsearch percentiles are approximate (t-digest).
+
+## 6. Evaluation night, 14 Nov (stored data, 15 incidents)
+
+`latency_report.py report --label night` over the three fault runs and the fault-free hour of the live evaluation:
+
+| Stage | n | Median | p95 | Max |
+|---|---|---|---|---|
+| Minute ends → anomaly stored | 102 | 5.92 s | 6.28 s | 6.54 s |
+| Anomaly → alert opened | 38 | 1.06 s | 12.43 s | 13.62 s |
+| Alert opened → Telegram message sent | 26 | 0.89 s | 8.48 s | 10.93 s |
+
+- Detection after the minute closes is as steady as in live1 (5.9 s, p95 6.3 s).
+- The long tails of the alert and Telegram stages come from slow Telegram sends that night; because sends are made
+  in line, they also delayed the next alerts (§3).
+- Per incident, fault → first anomaly was 55.5–56.8 s (faults at :09), 7.9–9.1 s or 68.0–68.6 s (faults at :57),
+  exactly as in live-evaluation-results.md §3. Fault → first Telegram was 57–58 s where the first alert was HIGH or
+  CRITICAL, and about one minute more (69–130 s) where it opened as MEDIUM.
+- The Elasticsearch stage returned no logs for that night, and the live feed was not recorded, so these two rows
+  come from live1 only. Ten alerts of that night have `notified_at` more than 30 s after opening (opened as MEDIUM
+  and notified on reaching HIGH, or stored before Day 41, when an escalation still overwrote `notified_at`); they
+  are left out of the Telegram stage.
