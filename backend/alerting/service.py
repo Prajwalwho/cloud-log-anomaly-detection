@@ -19,6 +19,7 @@ alerts.events message:
 Usage (from the project root, stack running):
     python -m backend.alerting.service
     python -m backend.alerting.service --idle-exit 60
+    python -m backend.alerting.service --no-telegram          # e.g. during a load test
 """
 from __future__ import annotations
 
@@ -49,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Alerting service: group anomalies into alerts.")
     parser.add_argument("--idle-exit", type=float, help="stop after this many seconds without messages")
     parser.add_argument("--group", help="consumer group (default from settings: alerting-group)")
+    parser.add_argument("--no-telegram", action="store_true",
+                        help="do not send Telegram messages (tests, load tests); alerts are stored as usual")
     args = parser.parse_args(argv)
     settings = AlertingSettings()
 
@@ -67,7 +70,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Created Kafka topic {', '.join(created)}")
 
     store = AlertStore(settings.postgres_conninfo, settings.alert_group_gap_s, settings.alert_min_severity)
-    notifier = TelegramNotifier(settings.telegram_token, settings.telegram_chat_id)
+    notifier = (TelegramNotifier(None, None) if args.no_telegram
+                else TelegramNotifier(settings.telegram_token, settings.telegram_chat_id))
     group = args.group or settings.alerting_group_id
     consumer = Consumer({
         "bootstrap.servers": settings.kafka_bootstrap_servers,

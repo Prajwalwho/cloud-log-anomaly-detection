@@ -3,8 +3,9 @@ Load test (Phase 10, Day 42): run the generator at increasing traffic rates, bac
 whether ingestion and detection keep up. Rules: backend/detection/evaluation/load.py; results:
 docs/testing/load-test-results.md. Output: experiments/results/load/<label>.json and .md (+ generator logs).
 
-Before starting: stack up, venv active; ingestion, detection and alerting running (alerting with Telegram off:
-traffic jumps are real anomalies for a model trained at 20 requests per second). The API is not needed.
+Before starting: stack up, venv active; ingestion, detection and alerting running, ingestion caught up (alerting
+with --no-telegram: traffic jumps are real anomalies for a model trained at 20 requests per second). The API is not
+needed. If ingestion does not consume during the first step, the test stops after about 90 s.
 
 Usage (from the project root):
     python scripts/load_test.py --label l1                          # 20, 50, 100, 200 requests/s, 5 min each
@@ -32,7 +33,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from backend.detection.config import DetectionSettings  # noqa: E402
 from backend.detection.evaluation.latency import distribution  # noqa: E402
-from backend.detection.evaluation.load import lag_summary, parse_generator_output, step_verdict  # noqa: E402
+from backend.detection.evaluation.load import (  # noqa: E402
+    lag_stalled, lag_summary, parse_generator_output, step_verdict,
+)
 from backend.ingestion.config import settings as ingestion_settings  # noqa: E402
 from latency_report import clock_offset, ingest_latency  # noqa: E402
 
@@ -40,11 +43,16 @@ OUT_DIR = ROOT / "experiments" / "results" / "load"
 SAMPLE_S = 5.0
 DRAIN_TIMEOUT_S = 600.0
 SETTLE = timedelta(seconds=60)          # measure each step from its second minute
+STALL_CHECK_S = 90.0                    # first step: from now on, check that ingestion is consuming
 
 WINDOWS_SQL = """
 SELECT window_end, created_at, is_anomaly FROM detection_windows
 WHERE window_end > %(start)s AND window_end <= %(end)s
 """
+
+
+class IngestionNotRunning(RuntimeError):
+    pass
 
 
 class LagProbe:
@@ -83,7 +91,8 @@ def docker_stats() -> dict[str, dict]:
     return stats
 
 
-def run_step(rate: float, seconds: float, seed: int, log_path: Path, probe: LagProbe) -> dict:
+def run_step(rate: float, seconds: float, seed: int, log_path: Path, probe: LagProbe,
+             check_ingestion: bool = False) -> dict:
     command = [sys.executable, "-m", "backend.log_generator.generator", "--kafka", "--rate", f"{rate:g}",
                "--duration", f"{seconds:g}", "--seed", str(seed)]
     start = datetime.now(timezone.utc)
@@ -100,6 +109,10 @@ def run_step(rate: float, seconds: float, seed: int, log_path: Path, probe: LagP
             if not containers and time.monotonic() - began > seconds / 2:
                 containers = docker_stats()
             elapsed = time.monotonic() - began
+            if check_ingestion and elapsed > STALL_CHECK_S and lag_stalled(lags):
+                process.terminate()
+                process.wait()
+                raise IngestionNotRunning(f"ingestion lag rose to {lags[-1]:,} events without ever going down")
             if lags and int(elapsed) % 60 < SAMPLE_S:
                 print(f"    {elapsed / 60:4.1f} min  ingestion lag {lags[-1]:>7,} events")
             time.sleep(SAMPLE_S)
@@ -198,11 +211,17 @@ def main() -> int:
     try:
         for i, rate in enumerate(args.rates):
             print(f"\n  Step {i + 1}/{len(args.rates)}: {rate:g} requests/s")
-            step = run_step(rate, args.minutes * 60, 400 + i, OUT_DIR / f"{args.label}-gen-{rate:g}.log", probe)
+            step = run_step(rate, args.minutes * 60, 400 + i, OUT_DIR / f"{args.label}-gen-{rate:g}.log", probe,
+                            check_ingestion=(i == 0))
             g = step["generator"]
             print(f"    generator: {g['events'] or 0:,} events in {g['elapsed_s'] or 0:.0f} s, "
                   f"{g['delivered'] or 0:,} delivered, {g['failed'] or 0} failed (exit code {step['exit_code']})")
             steps.append(step)
+    except IngestionNotRunning as exc:
+        print(f"\n[FAIL] {exc}. Is the ingestion service running (python -m backend.ingestion.consumer)? "
+              f"Start it, wait until it has caught up, then run the test again.")
+        probe.close()
+        return 1
     except KeyboardInterrupt:
         print("\nStopped; evaluating the finished steps.")
 

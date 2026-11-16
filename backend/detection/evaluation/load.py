@@ -49,6 +49,14 @@ def lag_summary(samples: list[int]) -> dict:
     }
 
 
+def lag_stalled(samples: list[int], window: int = 12) -> bool:
+    """True if the lag rose at each of the last `window` samples (and is above LAG_FLOOR): nobody is consuming.
+    A working consumer stores its backlog batch by batch, so its lag goes down now and then."""
+    recent = samples[-window:]
+    return (len(recent) == window and recent[-1] > LAG_FLOOR
+            and all(later > earlier for earlier, later in zip(recent, recent[1:])))
+
+
 def step_verdict(planned_s: float, generator: dict, ingest: dict | None, detect: dict | None,
                  lag: dict) -> tuple[bool, list[str]]:
     """(keeps up, reasons why not). ingest / detect are distributions as in latency.distribution (seconds)."""

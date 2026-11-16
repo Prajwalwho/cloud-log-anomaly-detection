@@ -1,0 +1,219 @@
+{
+  "label": "l1",
+  "created_at": "2026-11-16T09:37:41.694615+00:00",
+  "minutes": 5.0,
+  "db_clock_offset_s": 0.002,
+  "drain_s": null,
+  "steps": [
+    {
+      "rate": 20,
+      "start": "2026-11-16T09:06:12.954158+00:00",
+      "end": "2026-11-16T09:11:15.842750+00:00",
+      "events": 22365,
+      "events_per_s": 74.5,
+      "generator": {
+        "events": 22365,
+        "elapsed_s": 300.0,
+        "delivered": 22365,
+        "failed": 0,
+        "queued": 0
+      },
+      "ingest": null,
+      "ingestion_lag": {
+        "samples": 60,
+        "max": 22217,
+        "mean": 11147.9,
+        "last": 22217,
+        "growing": true
+      },
+      "detect": {
+        "n": 20,
+        "mean": 5.73,
+        "min": 5.479,
+        "p50": 5.708,
+        "p95": 6.025,
+        "p99": 6.025,
+        "max": 6.025
+      },
+      "windows": 20,
+      "anomalous_windows": 0,
+      "containers": {
+        "cla-postgres": {
+          "cpu": "0.00%",
+          "memory": "41.64MiB"
+        },
+        "cla-kafka": {
+          "cpu": "146.55%",
+          "memory": "510.9MiB"
+        },
+        "cla-elasticsearch": {
+          "cpu": "5.56%",
+          "memory": "1.556GiB"
+        }
+      },
+      "keeps_up": false,
+      "reasons": [
+        "no logs stored",
+        "ingestion lag kept growing (max 22,217 events)"
+      ],
+      "log": "experiments\\results\\load\\l1-gen-20.log"
+    },
+    {
+      "rate": 50,
+      "start": "2026-11-16T09:11:15.855555+00:00",
+      "end": "2026-11-16T09:16:18.721176+00:00",
+      "events": 54669,
+      "events_per_s": 182.2,
+      "generator": {
+        "events": 54669,
+        "elapsed_s": 300.0,
+        "delivered": 54669,
+        "failed": 0,
+        "queued": 0
+      },
+      "ingest": null,
+      "ingestion_lag": {
+        "samples": 60,
+        "max": 76516,
+        "mean": 49195.9,
+        "last": 76516,
+        "growing": true
+      },
+      "detect": {
+        "n": 20,
+        "mean": 5.65,
+        "min": 5.263,
+        "p50": 5.711,
+        "p95": 5.916,
+        "p99": 5.916,
+        "max": 5.916
+      },
+      "windows": 20,
+      "anomalous_windows": 1,
+      "containers": {
+        "cla-postgres": {
+          "cpu": "5.64%",
+          "memory": "41.92MiB"
+        },
+        "cla-kafka": {
+          "cpu": "9.91%",
+          "memory": "945.3MiB"
+        },
+        "cla-elasticsearch": {
+          "cpu": "0.51%",
+          "memory": "1.558GiB"
+        }
+      },
+      "keeps_up": false,
+      "reasons": [
+        "no logs stored",
+        "ingestion lag kept growing (max 76,516 events)"
+      ],
+      "log": "experiments\\results\\load\\l1-gen-50.log"
+    },
+    {
+      "rate": 100,
+      "start": "2026-11-16T09:16:18.753539+00:00",
+      "end": "2026-11-16T09:21:21.576860+00:00",
+      "events": 109623,
+      "events_per_s": 365.4,
+      "generator": {
+        "events": 109623,
+        "elapsed_s": 300.0,
+        "delivered": 109623,
+        "failed": 0,
+        "queued": 0
+      },
+      "ingest": null,
+      "ingestion_lag": {
+        "samples": 60,
+        "max": 185786,
+        "mean": 130815.5,
+        "last": 185786,
+        "growing": false
+      },
+      "detect": {
+        "n": 20,
+        "mean": 5.784,
+        "min": 5.216,
+        "p50": 5.871,
+        "p95": 6.177,
+        "p99": 6.177,
+        "max": 6.177
+      },
+      "windows": 20,
+      "anomalous_windows": 16,
+      "containers": {
+        "cla-postgres": {
+          "cpu": "0.02%",
+          "memory": "42.54MiB"
+        },
+        "cla-kafka": {
+          "cpu": "13.78%",
+          "memory": "965.3MiB"
+        },
+        "cla-elasticsearch": {
+          "cpu": "5.27%",
+          "memory": "1.56GiB"
+        }
+      },
+      "keeps_up": false,
+      "reasons": [
+        "no logs stored"
+      ],
+      "log": "experiments\\results\\load\\l1-gen-100.log"
+    },
+    {
+      "rate": 200,
+      "start": "2026-11-16T09:21:21.595819+00:00",
+      "end": "2026-11-16T09:26:24.158659+00:00",
+      "events": 220471,
+      "events_per_s": 734.9,
+      "generator": {
+        "events": 220471,
+        "elapsed_s": 300.0,
+        "delivered": 220471,
+        "failed": 0,
+        "queued": 0
+      },
+      "ingest": null,
+      "ingestion_lag": {
+        "samples": 60,
+        "max": 405170,
+        "mean": 295495.2,
+        "last": 405170,
+        "growing": false
+      },
+      "detect": {
+        "n": 20,
+        "mean": 5.751,
+        "min": 5.471,
+        "p50": 5.779,
+        "p95": 5.975,
+        "p99": 5.975,
+        "max": 5.975
+      },
+      "windows": 20,
+      "anomalous_windows": 20,
+      "containers": {
+        "cla-postgres": {
+          "cpu": "0.00%",
+          "memory": "42.72MiB"
+        },
+        "cla-kafka": {
+          "cpu": "9.22%",
+          "memory": "989.2MiB"
+        },
+        "cla-elasticsearch": {
+          "cpu": "6.18%",
+          "memory": "1.561GiB"
+        }
+      },
+      "keeps_up": false,
+      "reasons": [
+        "no logs stored"
+      ],
+      "log": "experiments\\results\\load\\l1-gen-200.log"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 """Load test helpers (Day 42): generator output, ingestion lag trend, keep-up verdict."""
-from backend.detection.evaluation.load import lag_summary, parse_generator_output, step_verdict
+from backend.detection.evaluation.load import lag_stalled, lag_summary, parse_generator_output, step_verdict
 
 OUTPUT = """  ... 85830 events sent, 85827 confirmed by Kafka
 
@@ -62,3 +62,14 @@ def test_step_without_data():
     keeps_up, reasons = step_verdict(300, {"elapsed_s": None}, None, None, {"growing": False})
     assert keeps_up is False
     assert reasons == ["generator did not finish", "no logs stored", "no detection windows stored"]
+
+
+def test_lag_stalled_when_nobody_consumes():
+    assert lag_stalled([1_000 + 370 * i for i in range(20)]) is True        # Day 42: ingestion was not running
+
+
+def test_lag_not_stalled_when_consumer_works():
+    working = [400, 900, 200, 1_500, 600, 2_000, 300, 1_800, 900, 2_500, 700, 3_000, 1_100, 2_800]
+    assert lag_stalled(working) is False
+    assert lag_stalled([100, 200, 300]) is False                             # too few samples
+    assert lag_stalled(list(range(10, 130, 10))) is False                    # rising, but below LAG_FLOOR
