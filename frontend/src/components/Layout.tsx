@@ -1,7 +1,8 @@
-// Sidebar (name, navigation, backend health and live-feed signals) and a top bar with the time range picker.
+// Sidebar (name, navigation, backend health and live-feed signals) and a top bar with the time range picker
+// (not on the documentation pages, where no data is shown).
 import { Suspense, useEffect, useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
-import { BellRing, Cpu, LayoutDashboard, ScrollText, TriangleAlert } from 'lucide-react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { BellRing, BookOpen, Cpu, LayoutDashboard, ScrollText, TriangleAlert } from 'lucide-react'
 import { api } from '../services/api'
 import { useLiveFeed } from '../live/context'
 import { RANGES, useTimeRange } from '../lib/timeRange'
@@ -13,6 +14,7 @@ const NAV = [
   { to: '/alerts', label: 'Alerts', icon: BellRing },
   { to: '/logs', label: 'Logs', icon: ScrollText },
   { to: '/models', label: 'Models', icon: Cpu },
+  { to: '/docs', label: 'Docs', icon: BookOpen },
 ]
 
 function HealthSignal() {
@@ -62,6 +64,8 @@ function RangePicker() {
 }
 
 export function Layout() {
+  const { pathname } = useLocation()
+  const onDocs = pathname === '/docs' || pathname.startsWith('/docs/')
   return (
     <div className="app">
       <aside className="sidebar">
@@ -87,7 +91,7 @@ export function Layout() {
       </aside>
       <div className="main">
         <header className="topbar">
-          <RangePicker />
+          {onDocs ? <span className="topbar-note">Documentation</span> : <RangePicker />}
         </header>
         <main className="content">
           {/* Pages are loaded on first visit (App.tsx); the shell stays visible meanwhile. */}

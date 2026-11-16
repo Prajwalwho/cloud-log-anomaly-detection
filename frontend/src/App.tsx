@@ -1,5 +1,6 @@
 // Routes. Each page is its own chunk, loaded the first time it is opened (React.lazy), so the first load only
-// fetches the shell and the page being opened; the charts library is only needed by the Overview.
+// fetches the shell and the page being opened; the charts library is only needed by the Overview, the documentation
+// text only by Docs.
 import { lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
@@ -9,6 +10,7 @@ const Anomalies = lazy(() => import('./pages/Anomalies').then((m) => ({ default:
 const Alerts = lazy(() => import('./pages/Alerts').then((m) => ({ default: m.Alerts })))
 const Logs = lazy(() => import('./pages/Logs').then((m) => ({ default: m.Logs })))
 const Models = lazy(() => import('./pages/Models').then((m) => ({ default: m.Models })))
+const Docs = lazy(() => import('./pages/Docs').then((m) => ({ default: m.Docs })))
 
 function App() {
   return (
@@ -20,6 +22,8 @@ function App() {
           <Route path="alerts" element={<Alerts />} />
           <Route path="logs" element={<Logs />} />
           <Route path="models" element={<Models />} />
+          <Route path="docs" element={<Docs />} />
+          <Route path="docs/:slug" element={<Docs />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
