@@ -8,8 +8,11 @@ The user guide of *Cloud Log Anomaly Detection for Proactive Fault Management*. 
 | Start here | [Getting started](getting-started.md) | Install, train the model, start everything, catch the first fault |
 | Learn | [Concepts](concepts.md) | The words used everywhere: window, template, anomaly, severity, alert, offset, … |
 | Learn | [How detection works](how-detection-works.md) | From a log line to an anomaly: Drain, windows, features, PCA, threshold, severity, timing |
+| Use | [Using the dashboard](using-the-dashboard.md) | Every page of the dashboard and what each part means |
+| Use | [Alerts and Telegram](alerts-and-telegram.md) | How anomalies become alerts, their life, Telegram messages and setup, settings |
+| Use | [Operations](operations.md) | Starting and stopping, health and consumer lag, disk space, retraining, tests, measuring, troubleshooting |
 
-More pages follow in Phase 11: using the dashboard, alerts and Telegram, operations, architecture, API and configuration reference, glossary and FAQ.
+More pages follow in Phase 11: architecture, API and configuration reference, glossary and FAQ.
 
 ## Writing a page
 
