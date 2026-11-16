@@ -16,6 +16,7 @@ export const SECTIONS: { title: string; slugs: string[] }[] = [
   { title: 'Learn', slugs: ['concepts', 'how-detection-works', 'architecture'] },
   { title: 'Use', slugs: ['using-the-dashboard', 'alerts-and-telegram', 'operations'] },
   { title: 'Reference', slugs: ['api-reference', 'configuration', 'glossary', 'faq'] },
+  { title: 'Study', slugs: ['study-guide'] },
 ]
 
 export interface DocPage {

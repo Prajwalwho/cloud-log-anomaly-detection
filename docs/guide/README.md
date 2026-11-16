@@ -16,6 +16,7 @@ The user guide of *Cloud Log Anomaly Detection for Proactive Fault Management*. 
 | Reference | [Configuration](configuration.md) | Every setting in `.env`, every command-line option, the scripts |
 | Reference | [Glossary](glossary.md) | Every term in one line |
 | Reference | [FAQ](faq.md) | Common questions about detection, using the system, and small problems |
+| Study | [Study guide](study-guide.md) | How to learn the project, a demo script, likely questions with answers, limits |
 
 ## Writing a page
 

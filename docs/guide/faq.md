@@ -126,4 +126,4 @@ git check-ignore -v <path>
 
 ## Next
 
-- Back to the [introduction](introduction.md).
+- [Study guide](study-guide.md): how to learn, demonstrate and present the project.

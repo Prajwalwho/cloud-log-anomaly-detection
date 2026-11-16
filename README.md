@@ -2,7 +2,7 @@
 
 A real-time system that collects logs from cloud services, detects abnormal patterns using machine learning, and alerts administrators before problems turn into failures. Its dashboard is called **Observatory**.
 
-> **Status:** The system is complete and evaluated (Phases 0–10). Phase 11, documentation, is in progress: the user guide is in [`docs/guide/`](docs/guide/README.md) and inside the dashboard under **Docs**. See [Roadmap](#roadmap).
+> **Status:** The system is built, evaluated (Phases 0–10) and documented (Phase 11). The user guide is in [`docs/guide/`](docs/guide/README.md) and inside the dashboard under **Docs**. The final report comes next. See [Roadmap](#roadmap).
 
 ---
 
@@ -60,6 +60,7 @@ The user guide, also shown in the dashboard at <http://localhost:5173/docs>:
 | Learn | [Concepts](docs/guide/concepts.md) · [How detection works](docs/guide/how-detection-works.md) · [Architecture](docs/guide/architecture.md) |
 | Use | [Using the dashboard](docs/guide/using-the-dashboard.md) · [Alerts and Telegram](docs/guide/alerts-and-telegram.md) · [Operations](docs/guide/operations.md) |
 | Reference | [API reference](docs/guide/api-reference.md) · [Configuration](docs/guide/configuration.md) · [Glossary](docs/guide/glossary.md) · [FAQ](docs/guide/faq.md) |
+| Study | [Study guide](docs/guide/study-guide.md): how to learn, demonstrate and present the project |
 
 Design and research documents:
 
@@ -186,7 +187,8 @@ Integration test files end in `_integration.py` or live in `tests/integration/`.
 | 8 | Alerting (grouping, auto-resolve, Telegram) | ✅ Done |
 | 9 | React dashboard | ✅ Done |
 | 10 | Integration, live evaluation, performance testing | ✅ Done |
-| 11 | Documentation (user guide in the app), then the final report | ⏳ In progress |
+| 11 | Documentation (user guide in the app) | ✅ Done |
+| 12 | Final report | Pending |
 
 ## License
 
