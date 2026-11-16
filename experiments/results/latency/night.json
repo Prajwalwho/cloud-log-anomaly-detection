@@ -1,0 +1,199 @@
+{
+  "label": "night",
+  "created_at": "2026-11-16T07:09:42.698652+00:00",
+  "periods": [
+    [
+      "2026-11-14T19:18:09.268000+00:00",
+      "2026-11-14T19:57:09.268000+00:00"
+    ],
+    [
+      "2026-11-14T19:59:09.859000+00:00",
+      "2026-11-14T20:38:09.859000+00:00"
+    ],
+    [
+      "2026-11-14T21:35:57.348000+00:00",
+      "2026-11-14T22:14:57.348000+00:00"
+    ],
+    [
+      "2026-11-14T22:17:00+00:00",
+      "2026-11-14T23:14:00+00:00"
+    ]
+  ],
+  "ground_truth": [
+    "data\\ground_truth\\eval-r1.jsonl",
+    "data\\ground_truth\\eval-r2.jsonl",
+    "data\\ground_truth\\eval-r3.jsonl"
+  ],
+  "feed": [],
+  "db_clock_offset_s": 0.01,
+  "ingest_backlog_logs": 0,
+  "alerts_notified_later": 10,
+  "stages": {
+    "ingest": null,
+    "detect": {
+      "n": 102,
+      "mean": 5.872,
+      "min": 5.23,
+      "p50": 5.919,
+      "p95": 6.284,
+      "p99": 6.528,
+      "max": 6.537
+    },
+    "alert": {
+      "n": 38,
+      "mean": 2.636,
+      "min": 0.161,
+      "p50": 1.057,
+      "p95": 12.434,
+      "p99": 13.365,
+      "max": 13.62
+    },
+    "telegram": {
+      "n": 26,
+      "mean": 1.686,
+      "min": 0.791,
+      "p50": 0.893,
+      "p95": 8.482,
+      "p99": 10.926,
+      "max": 10.932
+    },
+    "anomaly.created": null,
+    "alert.created": null
+  },
+  "incidents": [
+    {
+      "scenario": "error_burst",
+      "start": "2026-11-14T19:22:09.268000+00:00",
+      "anomaly_s": 56.6,
+      "alert_s": 56.8,
+      "telegram_s": 58.0
+    },
+    {
+      "scenario": "latency_spike",
+      "start": "2026-11-14T19:29:09.268000+00:00",
+      "anomaly_s": 56.8,
+      "alert_s": 57.4,
+      "telegram_s": 58.2
+    },
+    {
+      "scenario": "new_error",
+      "start": "2026-11-14T19:36:09.268000+00:00",
+      "anomaly_s": 56.6,
+      "alert_s": 57.0,
+      "telegram_s": 57.9
+    },
+    {
+      "scenario": "silent_service",
+      "start": "2026-11-14T19:43:09.268000+00:00",
+      "anomaly_s": 56.8,
+      "alert_s": 57.4,
+      "telegram_s": 58.3
+    },
+    {
+      "scenario": "cascading_failure",
+      "start": "2026-11-14T19:50:09.268000+00:00",
+      "anomaly_s": 56.7,
+      "alert_s": 57.7,
+      "telegram_s": 128.1
+    },
+    {
+      "scenario": "latency_spike",
+      "start": "2026-11-14T20:03:09.859000+00:00",
+      "anomaly_s": 55.8,
+      "alert_s": 56.0,
+      "telegram_s": 57.0
+    },
+    {
+      "scenario": "new_error",
+      "start": "2026-11-14T20:10:09.859000+00:00",
+      "anomaly_s": 55.6,
+      "alert_s": 56.7,
+      "telegram_s": 58.5
+    },
+    {
+      "scenario": "silent_service",
+      "start": "2026-11-14T20:17:09.859000+00:00",
+      "anomaly_s": 55.5,
+      "alert_s": 57.0,
+      "telegram_s": 128.6
+    },
+    {
+      "scenario": "cascading_failure",
+      "start": "2026-11-14T20:24:09.859000+00:00",
+      "anomaly_s": 55.8,
+      "alert_s": 56.2,
+      "telegram_s": 118.0
+    },
+    {
+      "scenario": "error_burst",
+      "start": "2026-11-14T20:32:09.859000+00:00",
+      "anomaly_s": 55.9,
+      "alert_s": 56.8,
+      "telegram_s": 57.7
+    },
+    {
+      "scenario": "new_error",
+      "start": "2026-11-14T21:39:57.348000+00:00",
+      "anomaly_s": 7.9,
+      "alert_s": 8.7,
+      "telegram_s": 69.2
+    },
+    {
+      "scenario": "silent_service",
+      "start": "2026-11-14T21:46:57.348000+00:00",
+      "anomaly_s": 9.1,
+      "alert_s": 9.4,
+      "telegram_s": 70.4
+    },
+    {
+      "scenario": "cascading_failure",
+      "start": "2026-11-14T21:53:57.348000+00:00",
+      "anomaly_s": 68.6,
+      "alert_s": 69.5,
+      "telegram_s": 130.0
+    },
+    {
+      "scenario": "error_burst",
+      "start": "2026-11-14T22:01:57.348000+00:00",
+      "anomaly_s": 68.6,
+      "alert_s": 69.2,
+      "telegram_s": 70.0
+    },
+    {
+      "scenario": "latency_spike",
+      "start": "2026-11-14T22:08:57.348000+00:00",
+      "anomaly_s": 68.0,
+      "alert_s": 68.7,
+      "telegram_s": 69.5
+    }
+  ],
+  "incident_summary": {
+    "anomaly_s": {
+      "n": 15,
+      "mean": 52.287,
+      "min": 7.9,
+      "p50": 56.6,
+      "p95": 68.6,
+      "p99": 68.6,
+      "max": 68.6
+    },
+    "alert_s": {
+      "n": 15,
+      "mean": 52.967,
+      "min": 8.7,
+      "p50": 57.0,
+      "p95": 69.29,
+      "p99": 69.458,
+      "max": 69.5
+    },
+    "telegram_s": {
+      "n": 15,
+      "mean": 79.293,
+      "min": 57.0,
+      "p50": 69.2,
+      "p95": 129.02,
+      "p99": 129.804,
+      "max": 130.0
+    }
+  }
+}

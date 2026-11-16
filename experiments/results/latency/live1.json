@@ -1,0 +1,127 @@
+{
+  "label": "live1",
+  "created_at": "2026-11-16T07:47:07.264215+00:00",
+  "periods": [
+    [
+      "2026-11-16T07:13:37.897000+00:00",
+      "2026-11-16T07:39:37.897000+00:00"
+    ]
+  ],
+  "ground_truth": [
+    "data\\ground_truth\\speed-1.jsonl"
+  ],
+  "feed": [
+    "experiments\\results\\latency\\feed-live1.jsonl"
+  ],
+  "db_clock_offset_s": 0.001,
+  "ingest_backlog_logs": 0,
+  "alerts_notified_later": 3,
+  "stages": {
+    "ingest": {
+      "n": 92140,
+      "mean": 0.612,
+      "min": 0.019,
+      "p50": 0.612,
+      "p95": 1.095,
+      "p99": 1.147,
+      "max": 1.598
+    },
+    "detect": {
+      "n": 18,
+      "mean": 5.892,
+      "min": 5.25,
+      "p50": 5.871,
+      "p95": 6.372,
+      "p99": 6.392,
+      "max": 6.397
+    },
+    "alert": {
+      "n": 8,
+      "mean": 0.787,
+      "min": 0.262,
+      "p50": 0.662,
+      "p95": 1.537,
+      "p99": 1.77,
+      "max": 1.828
+    },
+    "telegram": {
+      "n": 5,
+      "mean": 1.023,
+      "min": 0.707,
+      "p50": 0.966,
+      "p95": 1.482,
+      "p99": 1.571,
+      "max": 1.593
+    },
+    "anomaly.created": {
+      "n": 18,
+      "mean": 0.059,
+      "min": 0.049,
+      "p50": 0.058,
+      "p95": 0.069,
+      "p99": 0.086,
+      "max": 0.09
+    },
+    "alert.created": {
+      "n": 8,
+      "mean": 1.5,
+      "min": 0.661,
+      "p50": 1.328,
+      "p95": 2.701,
+      "p99": 2.823,
+      "max": 2.853
+    }
+  },
+  "incidents": [
+    {
+      "scenario": "error_burst",
+      "start": "2026-11-16T07:17:37.897000+00:00",
+      "anomaly_s": 28.5,
+      "alert_s": 29.2,
+      "telegram_s": 30.9
+    },
+    {
+      "scenario": "new_error",
+      "start": "2026-11-16T07:25:37.897000+00:00",
+      "anomaly_s": 28.5,
+      "alert_s": 29.1,
+      "telegram_s": null
+    },
+    {
+      "scenario": "silent_service",
+      "start": "2026-11-16T07:33:37.897000+00:00",
+      "anomaly_s": 27.8,
+      "alert_s": 28.3,
+      "telegram_s": 29.3
+    }
+  ],
+  "incident_summary": {
+    "anomaly_s": {
+      "n": 3,
+      "mean": 28.267,
+      "min": 27.8,
+      "p50": 28.5,
+      "p95": 28.5,
+      "p99": 28.5,
+      "max": 28.5
+    },
+    "alert_s": {
+      "n": 3,
+      "mean": 28.867,
+      "min": 28.3,
+      "p50": 29.1,
+      "p95": 29.19,
+      "p99": 29.198,
+      "max": 29.2
+    },
+    "telegram_s": {
+      "n": 2,
+      "mean": 30.1,
+      "min": 29.3,
+      "p50": 30.1,
+      "p95": 30.82,
+      "p99": 30.884,
+      "max": 30.9
+    }
+  }
+}
