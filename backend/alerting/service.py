@@ -10,7 +10,8 @@ Alerting service (Phase 8): anomalies.detected -> alerts in PostgreSQL -> alerts
 - Every alert_resolve_check_s, alerts without anomalies for alert_resolve_after_s are resolved.
 - Telegram (rules.notification_kind): one message when an alert reaches HIGH, one when a notified alert becomes
   CRITICAL, one when a notified alert is resolved. A failed send leaves notification_sent false, so the next update
-  of that alert tries again. Detection and alerting never wait for Telegram beyond its 10-s timeout.
+  of that alert tries again. Messages are sent from a background thread (background.py, Day 43): storing and
+  publishing alerts never waits for Telegram; a successful send is recorded (notified_at) and published as an update.
 
 alerts.events message:
     {"schema_version": "1.0", "type": "alert.created" | "alert.updated", "anomaly_id": "..." | null,
@@ -34,8 +35,9 @@ from confluent_kafka import Consumer, Producer
 
 from ..common.kafka_commit import commit_safely
 from ..common.kafka_topics import ensure_topics
+from .background import BackgroundSender
 from .config import AlertingSettings
-from .notifier import TelegramNotifier, format_message
+from .notifier import TelegramNotifier
 from .rules import notification_kind
 from .store import AlertStore
 
@@ -88,13 +90,17 @@ def main(argv: list[str] | None = None) -> int:
         producer.produce(settings.kafka_topic_alerts, key=alert["service"].encode(),
                          value=json.dumps(alert_event(event_type, alert, anomaly_id)).encode())
 
-    def notify(kind: str, alert: dict) -> dict:
-        """Send and, for new/escalated alerts, record it. Returns the (possibly updated) alert."""
-        if notifier.send(format_message(kind, alert)):
-            print(f"  notified       {alert['service']:<18} {kind}")
-            if kind != "resolved":
-                return store.mark_notified(alert["id"])
-        return alert
+    def after_sent(kind: str, alert: dict) -> None:
+        """Runs on the sender thread after Telegram accepted a message."""
+        print(f"  notified       {alert['service']:<18} {kind}")
+        if kind != "resolved":
+            publish("alert.updated", store.mark_notified(alert["id"]), None)
+
+    sender = BackgroundSender(notifier, after_sent)
+
+    def notified(alert: dict) -> bool:
+        """Told already, or a message for it is on its way."""
+        return alert["notification_sent"] or sender.is_pending(alert["id"])
 
     counts: Counter = Counter()
     last_message = time.monotonic()
@@ -120,10 +126,10 @@ def main(argv: list[str] | None = None) -> int:
                 if outcome.event_type:
                     alert = outcome.alert
                     kind = notification_kind(outcome.result, alert["severity"], outcome.previous_severity,
-                                             alert["notification_sent"], settings.notify_min_severity)
-                    if kind:
-                        alert = notify(kind, alert)
+                                             notified(alert), settings.notify_min_severity)
                     publish(outcome.event_type, alert, anomaly["anomaly_id"])
+                    if kind:
+                        sender.submit(kind, alert)
                     print(f"  {outcome.event_type:<14} {alert['service']:<18} {alert['severity']:<8} "
                           f"x{alert['occurrence_count']:<3} {alert['title']}  ({alert['message']})")
                 elif outcome.result == "below_threshold":
@@ -139,9 +145,9 @@ def main(argv: list[str] | None = None) -> int:
                     counts["resolved"] += 1
                     print(f"  resolved       {alert['service']:<18} {alert['severity']:<8} "
                           f"x{alert['occurrence_count']:<3} {alert['title']}")
-                    if alert["notification_sent"]:
-                        notify("resolved", alert)
                     publish("alert.updated", alert, None)
+                    if notified(alert):
+                        sender.submit("resolved", alert)
                 producer.flush(10)
                 next_resolve = time.monotonic() + settings.alert_resolve_check_s
 
@@ -150,11 +156,15 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        unsent = sender.close(15)
+        if unsent:
+            print(f"  [WARN] {unsent} Telegram message(s) not sent before shutdown")
         producer.flush(10)
         consumer.close()
 
     summary = ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) or "nothing processed"
-    print(f"\n{summary}; Telegram sent {notifier.sent}, failed {notifier.failed}")
+    print(f"\n{summary}; Telegram sent {notifier.sent}, failed {notifier.failed}"
+          + (f", dropped {sender.dropped}" if sender.dropped else ""))
     return 0
 
 

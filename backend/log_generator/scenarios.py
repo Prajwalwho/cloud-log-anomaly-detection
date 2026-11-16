@@ -14,6 +14,7 @@ Fault kinds:
 """
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, replace
 
 FAULT_KINDS = ("error_burst", "latency_spike", "new_error", "silent")
@@ -116,22 +117,30 @@ SCENARIOS: dict[str, Scenario] = {
 
 
 def build_schedule(
-    names: list[str], warmup_s: float = 300.0, gap_s: float = 300.0
+    names: list[str], warmup_s: float = 300.0, gap_s: float = 300.0, jitter_s: float = 0.0,
+    rng: random.Random | None = None,
 ) -> tuple[list[tuple[Scenario, float]], float]:
     """
     Place scenarios one after another on the run timeline.
 
     Timeline: warmup (normal) -> scenario -> gap (normal) -> scenario -> gap ...
+    jitter_s > 0 delays each scenario by a random 0..jitter_s seconds (rng, seeded by the caller), so faults start at
+    different seconds of the minute (Day 40: without it, all faults of a run started at the same second, and the
+    detection delay was measured at one position only). Gaps stay at least gap_s.
     Returns ([(scenario, start_offset_s), ...], total_duration_s).
     """
+    if jitter_s < 0:
+        raise ValueError("jitter_s must not be negative")
+    rng = rng or random.Random(0)
     schedule: list[tuple[Scenario, float]] = []
     t = warmup_s
     for name in names:
         if name not in SCENARIOS:
             raise ValueError(f"Unknown scenario '{name}'. Available: {list(SCENARIOS)}")
         scenario = SCENARIOS[name]
-        schedule.append((scenario, t))
-        t += scenario.duration_s + gap_s
+        delay = round(rng.uniform(0, jitter_s), 1) if jitter_s else 0.0
+        schedule.append((scenario, t + delay))
+        t += delay + scenario.duration_s + gap_s
     return schedule, t
 
 

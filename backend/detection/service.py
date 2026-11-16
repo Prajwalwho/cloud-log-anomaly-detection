@@ -24,8 +24,14 @@ therefore discards its open windows and pending offsets when partitions are revo
 from the replay; closed windows stay closed (replayed events for them are dropped as late). A commit that fails
 for the same reason is reported and skipped (common/kafka_commit.py).
 
-The first window after start-up is partial (it began before the first event was read) and is not scored.
-Minutes without any traffic are stored without anomalies, not printed, and reported once.
+The first window after start-up is partial (it began before the first event was read) and is not scored. The
+same holds for minutes in which all traffic started or stopped (edges.py, Day 43): they look like a volume drop on
+every service. Minutes without any traffic are stored without anomalies, not printed, and reported once.
+
+One process per consumer group (Day 42/43): each detection process must read ALL partitions of logs.raw, because
+logs are keyed by service and a service it cannot see would look silent. If a second detection process joins the
+group, Kafka splits the partitions; both then warn and stop judging (nothing is lost: offsets are not committed)
+until one of them is stopped.
 
 Usage (from the project root):
     python -m backend.detection.service
@@ -37,13 +43,14 @@ import argparse
 import json
 import sys
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from confluent_kafka import Consumer, KafkaException, TopicPartition
 
 from ..common.kafka_commit import commit_safely
 from .config import DetectionSettings
+from .edges import MinuteBounds, traffic_edge
 from .offsets import OffsetTracker
 from .package import load_package
 from .pipeline import parse_timestamp, too_far_in_future
@@ -111,12 +118,14 @@ def main(argv: list[str] | None = None) -> int:
         if topic not in topics:
             print(f"[FAIL] Topic {topic} missing. Start the stack: .\\scripts\\start.ps1 up")
             return 1
+    partition_count = len(topics[settings.kafka_topic_logs].partitions)
     publisher = AnomalyPublisher(settings.kafka_bootstrap_servers, settings.kafka_topic_anomalies)
 
     aggregator = WindowAggregator(settings.window_s, services=settings.service_list)
     tracker = OffsetTracker()
     watermark = PartitionWatermark()
     next_offset: dict[tuple[str, int], int] = {}
+    bounds = MinuteBounds()
 
     stopping = False
 
@@ -127,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         discarded = aggregator.discard_open()
         tracker.clear()
         next_offset.clear()
+        bounds.clear()
         if discarded:
             print(f"  [WARN] partitions revoked or lost; {discarded} open windows discarded and rebuilt from Kafka")
 
@@ -134,8 +144,9 @@ def main(argv: list[str] | None = None) -> int:
     grace = timedelta(seconds=settings.grace_s)
     first_event: float | None = None
     last_message = time.monotonic()
-    events = invalid = future = windows_stored = anomalies_created = 0
-    warned_idle = False
+    events = invalid = future = windows_stored = anomalies_created = edge_minutes = 0
+    warned_idle = warned_partial = False
+    previous_had_traffic = True             # the minute before the first judged one is the partial start-up minute
 
     print(f"Detection service: model {model['name']} {model['version']} (id {model['id']}), "
           f"group '{group}', topic '{settings.kafka_topic_logs}' -> '{settings.kafka_topic_anomalies}'"
@@ -162,8 +173,10 @@ def main(argv: list[str] | None = None) -> int:
                           f"(more than 5 min in the future): {service}")
                     continue
                 template_id = miner.add_log_message(text)["cluster_id"]
-                aggregator.add(service, ts, level, template_id, event.get("latency_ms"), event.get("event_id"))
-                tracker.add(msg.topic(), msg.partition(), msg.offset(), aggregator.window_start(ts))
+                window_start = aggregator.window_start(ts)
+                if aggregator.add(service, ts, level, template_id, event.get("latency_ms"), event.get("event_id")):
+                    bounds.add(window_start, ts.timestamp())
+                tracker.add(msg.topic(), msg.partition(), msg.offset(), window_start)
                 watermark.update(msg.topic(), msg.partition(), ts)
                 first_event = first_event if first_event is not None else ts.timestamp()
                 events += 1
@@ -172,13 +185,35 @@ def main(argv: list[str] | None = None) -> int:
 
             assigned = consumer.assignment()
             current = None
-            if assigned and first_event is not None:
+            partial = bool(assigned) and len(assigned) < partition_count
+            if partial and not warned_partial:
+                print(f"  [WARN] this process has {len(assigned)} of {partition_count} partitions of "
+                      f"{settings.kafka_topic_logs}: another detection service is probably running in group "
+                      f"'{group}'. Services on the other partitions would look silent, so minutes are not judged "
+                      f"until this process has all partitions. Stop the other one.")
+            elif warned_partial and not partial and assigned:
+                print("  all partitions assigned again; judging resumes (open minutes rebuilt from Kafka)")
+            warned_partial = partial if assigned else warned_partial
+            if assigned and not partial and first_event is not None:
                 caught_up = caught_up_partitions(consumer, assigned, next_offset)
                 current = watermark.current([(tp.topic, tp.partition) for tp in assigned], caught_up)
 
             if current is not None:
                 closed = aggregator.close_until(current - grace)
-                complete = [w for w in closed if w.start_epoch >= first_event]
+                edge_kinds: dict[float, str] = {}
+                for start in sorted({w.start_epoch for w in closed}):
+                    minute_bounds = bounds.pop(start)
+                    if start >= first_event:
+                        edge = traffic_edge(start, settings.window_s, minute_bounds, bounds.latest,
+                                            previous_had_traffic)
+                        if edge:
+                            edge_kinds[start] = edge
+                    previous_had_traffic = minute_bounds is not None
+                complete = [w for w in closed if w.start_epoch >= first_event and w.start_epoch not in edge_kinds]
+                for start, edge in sorted(edge_kinds.items()):
+                    print(f"  {datetime.fromtimestamp(start, tz=timezone.utc):%H:%M} UTC  traffic {edge} during "
+                          f"this minute; not judged")
+                edge_minutes += len(edge_kinds)
                 if closed:
                     results, idle_minutes = judge_windows(detector, complete)
                     created = store.write(results, model["id"]) if results else []
@@ -218,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nEvents {events:,} (invalid {invalid}, future {future}, late {aggregator.late_events}); "
           f"windows stored {windows_stored}; anomalies {anomalies_created} "
           f"(published {publisher.delivered}, failed {publisher.failed}); "
+          f"minutes not judged because traffic started or stopped: {edge_minutes}; "
           f"events in open windows (to be replayed): {tracker.pending}")
     return 0
 

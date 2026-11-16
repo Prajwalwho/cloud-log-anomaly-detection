@@ -18,6 +18,7 @@ Usage (run from the project root):
     python -m backend.log_generator.generator --scenario all --fast --seed 42 --output data/processed/all_faults.jsonl
     python -m backend.log_generator.generator --kafka --duration 60
     python -m backend.log_generator.generator --kafka --duration 0 --scenario all
+    python -m backend.log_generator.generator --kafka --scenario all --seed 302 --jitter 60
 """
 from __future__ import annotations
 
@@ -513,6 +514,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="seconds of normal traffic before the first scenario (default: %(default)s)")
     parser.add_argument("--gap", type=float, default=300.0,
                         help="seconds of normal traffic after each scenario (default: %(default)s)")
+    parser.add_argument("--jitter", type=float, default=0.0,
+                        help="delay each scenario by a random 0..JITTER seconds (seeded), so faults start at "
+                             "different seconds of the minute; 60 covers the whole minute (default: %(default)s)")
     parser.add_argument("--ground-truth", type=Path,
                         help="ground-truth output file (default: data/ground_truth/<run_id>.jsonl)")
     parser.add_argument("--list-scenarios", action="store_true",
@@ -550,7 +554,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # ---- schedule faults ----
     names = list(SCENARIOS) if "all" in args.scenario else args.scenario
-    schedule, needed_s = build_schedule(names, args.warmup, args.gap) if names else ([], 0.0)
+    schedule, needed_s = (build_schedule(names, args.warmup, args.gap, args.jitter,
+                                         random.Random(None if args.seed is None else args.seed + 1))
+                          if names else ([], 0.0))
 
     duration = math.inf if args.duration <= 0 else args.duration
     if names and duration < needed_s:
