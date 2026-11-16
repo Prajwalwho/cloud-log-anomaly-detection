@@ -138,7 +138,9 @@ class AlertStore:
 
     def mark_notified(self, alert_id: str) -> dict:
         with self._connect() as conn, conn.transaction():
-            conn.execute("UPDATE alerts SET notification_sent = TRUE, notified_at = now() WHERE id = %s", (alert_id,))
+            # notified_at keeps the FIRST message (when the operator learned about it); escalations do not move it
+            conn.execute("UPDATE alerts SET notification_sent = TRUE, notified_at = COALESCE(notified_at, now()) "
+                         "WHERE id = %s", (alert_id,))
             return alert_item(conn.execute(ALERT_SELECT, {"id": alert_id}).fetchone())
 
     def resolve_quiet(self, resolve_after_s: float) -> list[dict]:
